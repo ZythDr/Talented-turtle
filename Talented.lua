@@ -48,6 +48,32 @@ end
 local Talented = AceLibrary("AceAddon-2.0"):new("AceEvent-2.0", "AceConsole-2.0", "AceHook-2.1", "AceDB-2.0")
 _G.Talented = Talented
 
+do
+	local function DetectAddonFolder()
+		if type(GetNumAddOns) == "function" and type(GetAddOnInfo) == "function" then
+			local count = GetNumAddOns()
+			for i = 1, count do
+				local name = GetAddOnInfo(i)
+				if name == "Talented-turtle" or name == "Talented" then
+					return name
+				end
+			end
+			for i = 1, count do
+				local name, title = GetAddOnInfo(i)
+				local t = string.lower(tostring(title or ""))
+				if string.find(t, "talented", 1, true) then
+					return name
+				end
+			end
+		end
+		return "Talented-turtle"
+	end
+
+	Talented.addonFolder = DetectAddonFolder()
+	Talented.textureRoot = "Interface\\AddOns\\" .. Talented.addonFolder .. "\\Textures\\"
+	_G.TALENTED_TEXTURE_ROOT = Talented.textureRoot
+end
+
 local function TalentedSlashDispatch(msg)
 	local addon = _G.Talented
 	if addon and type(addon.OnChatCommand) == "function" then

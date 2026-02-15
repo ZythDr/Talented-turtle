@@ -44,6 +44,17 @@ local function SetTextSafe(widget, text)
 	widget:SetText(tostring(text or ""))
 end
 
+local function TalentedTexture(file)
+	local root = Talented and Talented.textureRoot
+	if type(root) ~= "string" or root == "" then
+		root = _G.TALENTED_TEXTURE_ROOT
+	end
+	if type(root) ~= "string" or root == "" then
+		root = "Interface\\AddOns\\Talented-turtle\\Textures\\"
+	end
+	return root .. file
+end
+
 local function WrapWidgetFactories(frame)
 	if not frame or frame._talentedSetSizeWrapped then
 		return frame
@@ -738,7 +749,7 @@ do
 	end
 
 	local function MakeRankFrame(button, anchor)
-		local t = CreateTexture(button, "OVERLAY", "Interface\\Addons\\Talented\\Textures\\border")
+		local t = CreateTexture(button, "OVERLAY", TalentedTexture("border"))
 		t:SetSize(32, 32)
 		t:SetPoint("CENTER", button, anchor)
 		local fs = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -814,7 +825,7 @@ do
 
 	local function NewBranch(parent)
 		local t = parent:CreateTexture(nil, "BORDER")
-		t:SetTexture("Interface\\Addons\\Talented\\Textures\\branches-normal")
+		t:SetTexture(TalentedTexture("branches-normal"))
 		t:SetSize(32, 32)
 		t:SetVertexColor(NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b)
 
@@ -843,7 +854,7 @@ do
 
 	local function NewArrow(parent)
 		local t = parent:CreateTexture(nil, "OVERLAY")
-		t:SetTexture("Interface\\Addons\\Talented\\Textures\\arrows-normal")
+		t:SetTexture(TalentedTexture("arrows-normal"))
 		t:SetSize(32, 32)
 		t:SetVertexColor(NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b)
 
