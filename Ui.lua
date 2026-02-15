@@ -55,6 +55,23 @@ local function TalentedTexture(file)
 	return root .. file
 end
 
+local function CreateTexture(base, layer, path, blend)
+	local t = base:CreateTexture(nil, layer)
+	if path then
+		t:SetTexture(path)
+	end
+	if blend then
+		t:SetBlendMode(blend)
+	end
+	return t
+end
+
+local function CreateAllPointsTexture(base, layer, path, blend)
+	local t = CreateTexture(base, layer, path, blend)
+	t:SetAllPoints(base)
+	return t
+end
+
 local function WrapWidgetFactories(frame)
 	if not frame or frame._talentedSetSizeWrapped then
 		return frame
@@ -356,7 +373,7 @@ do
 		local e = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
 		e:SetFontObject(ChatFontNormal)
 		e:SetTextColor(GREEN_FONT_COLOR.r, GREEN_FONT_COLOR.g, GREEN_FONT_COLOR.b)
-		e:SetSize(185, 13)
+		e:SetSize(165, 13)
 		e:SetAutoFocus(false)
 		e:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 		e:SetScript("OnEditFocusLost", function(self)
@@ -372,6 +389,33 @@ do
 		e:SetPoint("LEFT", parent.bmode, "RIGHT", 14, 1)
 		e.tooltip = L["You can edit the name of the template here. You must press the Enter key to save your changes."]
 		parent.editname = e
+
+		local color = CreateFrame("Button", nil, parent)
+		color:SetSize(14, 14)
+		color:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+		color:SetPoint("LEFT", e, "RIGHT", 6, 0)
+		color:SetScript("OnClick", function(self, button)
+			button = button or _G.arg1 or "LeftButton"
+			local template = Talented.template
+			if not Talented:IsTemplateMenuColorEditable(template) then
+				return
+			end
+			if button == "RightButton" then
+				Talented:ClearTemplateMenuColor(template)
+				Talented:UpdateView()
+				return
+			end
+			Talented:OpenTemplateColorPicker(template, self)
+		end)
+		color:SetScript("OnEnter", Frame_OnEnter)
+		color:SetScript("OnLeave", Frame_OnLeave)
+		color.tooltip = "Left-click: choose a template color. Right-click: clear custom color."
+		local swatch = color:CreateTexture(nil, "ARTWORK")
+		swatch:SetTexture("Interface\\ChatFrame\\ChatFrameColorSwatch")
+		swatch:SetAllPoints(color)
+		color.swatch = swatch
+		parent.templatecolor = color
+		table.insert(Talented.uielements, color)
 
 		local targetname = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 		targetname:SetJustifyH("LEFT")
@@ -393,16 +437,6 @@ do
 		local cb = CreateFrame("Checkbutton", nil, parent)
 		parent.checkbox = cb
 
-		local makeTexture = function(path, blend)
-			local t = cb:CreateTexture()
-			t:SetTexture(path)
-			t:SetAllPoints(cb)
-			if blend then
-				t:SetBlendMode(blend)
-			end
-			return t
-		end
-
 		cb:SetSize(20, 20)
 
 		local label = cb:CreateFontString(nil, "BACKGROUND", "GameFontNormal")
@@ -411,11 +445,11 @@ do
 		label:SetPoint("LEFT", cb, "RIGHT", 1, 1)
 		cb.label = label
 
-		cb:SetNormalTexture(makeTexture("Interface\\Buttons\\UI-CheckBox-Up"))
-		cb:SetPushedTexture(makeTexture("Interface\\Buttons\\UI-CheckBox-Down"))
-		cb:SetDisabledTexture(makeTexture("Interface\\Buttons\\UI-CheckBox-Check-Disabled"))
-		cb:SetCheckedTexture(makeTexture("Interface\\Buttons\\UI-CheckBox-Check"))
-		cb:SetHighlightTexture(makeTexture("Interface\\Buttons\\UI-CheckBox-Highlight", "ADD"))
+		cb:SetNormalTexture(CreateAllPointsTexture(cb, nil, "Interface\\Buttons\\UI-CheckBox-Up"))
+		cb:SetPushedTexture(CreateAllPointsTexture(cb, nil, "Interface\\Buttons\\UI-CheckBox-Down"))
+		cb:SetDisabledTexture(CreateAllPointsTexture(cb, nil, "Interface\\Buttons\\UI-CheckBox-Check-Disabled"))
+		cb:SetCheckedTexture(CreateAllPointsTexture(cb, nil, "Interface\\Buttons\\UI-CheckBox-Check"))
+		cb:SetHighlightTexture(CreateAllPointsTexture(cb, nil, "Interface\\Buttons\\UI-CheckBox-Highlight", "ADD"))
 		cb:SetScript("OnClick", function() Talented:SetMode(Talented.mode == "edit" and "view" or "edit") end)
 		cb:SetScript("OnEnter", Frame_OnEnter)
 		cb:SetScript("OnLeave", Frame_OnLeave)
@@ -476,20 +510,9 @@ do
 
 	function Talented:CreateCloseButton(parent, OnClickHandler)
 		local close = CreateFrame("Button", nil, parent)
-
-		local makeTexture = function(path, blend)
-			local t = close:CreateTexture()
-			t:SetAllPoints(close)
-			t:SetTexture(path)
-			if blend then
-				t:SetBlendMode(blend)
-			end
-			return t
-		end
-
-		close:SetNormalTexture(makeTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up"))
-		close:SetPushedTexture(makeTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Down"))
-		close:SetHighlightTexture(makeTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight", "ADD"))
+		close:SetNormalTexture(CreateAllPointsTexture(close, nil, "Interface\\Buttons\\UI-Panel-MinimizeButton-Up"))
+		close:SetPushedTexture(CreateAllPointsTexture(close, nil, "Interface\\Buttons\\UI-Panel-MinimizeButton-Down"))
+		close:SetHighlightTexture(CreateAllPointsTexture(close, nil, "Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight", "ADD"))
 		close:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 		close:SetScript("OnClick", CloseButton_OnClick)
 		close.OnClick = OnClickHandler
@@ -609,17 +632,6 @@ end
 --
 
 do
-	local function CreateTexture(base, layer, path, blend)
-		local t = base:CreateTexture(nil, layer)
-		if path then
-			t:SetTexture(path)
-		end
-		if blend then
-			t:SetBlendMode(blend)
-		end
-		return t
-	end
-
 	local trees = Talented.Pool:new()
 
 	local function Layout(frame, width, height)
@@ -680,15 +692,9 @@ do
 		local clear = CreateFrame("Button", nil, frame)
 		frame.clear = clear
 
-		local makeTexture = function(path, blend)
-			local t = CreateTexture(clear, nil, path, blend)
-			t:SetAllPoints(clear)
-			return t
-		end
-
-		clear:SetNormalTexture(makeTexture("Interface\\Buttons\\CancelButton-Up"))
-		clear:SetPushedTexture(makeTexture("Interface\\Buttons\\CancelButton-Down"))
-		clear:SetHighlightTexture(makeTexture("Interface\\Buttons\\CancelButton-Highlight", "ADD"))
+		clear:SetNormalTexture(CreateAllPointsTexture(clear, nil, "Interface\\Buttons\\CancelButton-Up"))
+		clear:SetPushedTexture(CreateAllPointsTexture(clear, nil, "Interface\\Buttons\\CancelButton-Down"))
+		clear:SetHighlightTexture(CreateAllPointsTexture(clear, nil, "Interface\\Buttons\\CancelButton-Highlight", "ADD"))
 
 		clear:SetScript("OnClick", ClearBranchButton_OnClick)
 		clear:SetScript("OnEnter", Talented.base.editname:GetScript("OnEnter"))
@@ -720,17 +726,6 @@ end
 --
 
 do
-	local function CreateTexture(base, layer, path, blend)
-		local t = base:CreateTexture(nil, layer)
-		if path then
-			t:SetTexture(path)
-		end
-		if blend then
-			t:SetBlendMode(blend)
-		end
-		return t
-	end
-
 	local buttons = Talented.Pool:new()
 
 	local function Button_OnEnter(self)
@@ -1111,6 +1106,161 @@ do
 		return code .. s .. "|r"
 	end
 
+	function Talented:GetClassMenuColor(class)
+		if type(class) ~= "string" then
+			return nil
+		end
+		local default = RAID_CLASS_COLORS[class]
+		if type(default) ~= "table" then
+			return nil
+		end
+		local color = (CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[class]) or default
+		if class == "SHAMAN" then
+			color = SHAMAN_COLOR_OVERRIDE
+		end
+		return color.r, color.g, color.b
+	end
+
+	local function ClampColorValue(v)
+		v = tonumber(v)
+		if not v then
+			return nil
+		end
+		if v < 0 then
+			return 0
+		end
+		if v > 1 then
+			return 1
+		end
+		return v
+	end
+
+	function Talented:GetTemplateMenuColor(template)
+		local c = type(template) == "table" and template.menuColor or nil
+		if type(c) ~= "table" then
+			return nil
+		end
+		local r = ClampColorValue(c.r)
+		local g = ClampColorValue(c.g)
+		local b = ClampColorValue(c.b)
+		if not r or not g or not b then
+			return nil
+		end
+		return r, g, b
+	end
+
+	function Talented:IsTemplateMenuColorEditable(template)
+		if type(template) ~= "table" then
+			return false
+		end
+		if template.talentGroup or template.inspect_name then
+			return false
+		end
+		return true
+	end
+
+	function Talented:SetTemplateMenuColor(template, r, g, b)
+		if not self:IsTemplateMenuColorEditable(template) then
+			return false
+		end
+		r = ClampColorValue(r)
+		g = ClampColorValue(g)
+		b = ClampColorValue(b)
+		if not r or not g or not b then
+			return false
+		end
+		template.menuColor = {r = r, g = g, b = b}
+		return true
+	end
+
+	function Talented:ClearTemplateMenuColor(template)
+		if not self:IsTemplateMenuColorEditable(template) then
+			return
+		end
+		template.menuColor = nil
+	end
+
+	local function TemplateColorCode(template)
+		local r, g, b = Talented:GetTemplateMenuColor(template)
+		if not r then
+			return nil
+		end
+		return string.format("|cff%02x%02x%02x", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
+	end
+
+	function Talented:ColorizeTemplateName(template, class, text)
+		local s = tostring(text or "")
+		local code = TemplateColorCode(template)
+		if type(code) ~= "string" or code == "" then
+			return s
+		end
+		return code .. s .. "|r"
+	end
+
+	function Talented:RefreshTemplateColorButton(button, template)
+		if not button or not button.swatch then
+			return
+		end
+		local r, g, b = self:GetTemplateMenuColor(template)
+		if not r then
+			r, g, b = 1, 1, 1
+			button:SetAlpha(0.7)
+		else
+			button:SetAlpha(1)
+		end
+		button.swatch:SetVertexColor(r, g, b)
+	end
+
+	function Talented:OpenTemplateColorPicker(template, button)
+		if not self:IsTemplateMenuColorEditable(template) then
+			return
+		end
+		local picker = _G.ColorPickerFrame
+		if not picker or type(picker.SetColorRGB) ~= "function" then
+			return
+		end
+		local r, g, b = self:GetTemplateMenuColor(template)
+		local hadColor = r and g and b
+		if not r then
+			r, g, b = 1, 1, 1
+		end
+		local function apply()
+			local pr, pg, pb = picker:GetColorRGB()
+			if not hadColor and math.abs(pr - 1) < 0.001 and math.abs(pg - 1) < 0.001 and math.abs(pb - 1) < 0.001 then
+				Talented:ClearTemplateMenuColor(template)
+			elseif Talented:SetTemplateMenuColor(template, pr, pg, pb) then
+				-- set successfully
+			end
+			Talented:UpdateView()
+		end
+		local restore = {r = r, g = g, b = b}
+		local cancel = function()
+			if hadColor then
+				Talented:SetTemplateMenuColor(template, restore.r, restore.g, restore.b)
+			else
+				Talented:ClearTemplateMenuColor(template)
+			end
+			Talented:UpdateView()
+		end
+		-- Avoid any existing callback receiving this initialization color.
+		picker.func = nil
+		picker.cancelFunc = nil
+		picker.opacityFunc = nil
+		picker.hasOpacity = nil
+		picker.opacity = 0
+		picker:SetColorRGB(r, g, b)
+		picker.func = apply
+		picker.cancelFunc = cancel
+		if picker.Hide then
+			picker:Hide()
+		end
+		if type(_G.ShowUIPanel) == "function" then
+			_G.ShowUIPanel(picker)
+		elseif picker.Show then
+			picker:Show()
+		end
+	end
+
 	local function SortEntryText(entry)
 		local s = entry and (entry.sortKey or entry.text) or ""
 		s = tostring(s or "")
@@ -1470,6 +1620,23 @@ do
 		if type(template) ~= "table" then
 			return
 		end
+		local button = _G.this
+		if type(button) == "table" then
+			button.keepShownOnClick = nil
+		end
+		local clickButton = _G.arg1
+		if clickButton == "RightButton" and not template.talentGroup then
+			if type(button) == "table" then
+				-- Keep parent menu open on right-click without flipping selection state.
+				button.keepShownOnClick = 1
+				button.checked = not button.checked
+			end
+			if not Talented:OpenTemplateContextSubmenu(template) then
+				Talented:CloseMenu()
+				Talented:QueueTemplateContextMenu(template)
+			end
+			return
+		end
 		if IsShiftKeyDown() then
 			local frame = Talented:MakeAlternateView()
 			frame.view:SetTemplate(template)
@@ -1481,9 +1648,71 @@ do
 		Talented:CloseMenu()
 	end
 
-	local function Menu_IsTemplatePlayerClass()
-		local _, playerClass = UnitClass("player")
-		return Talented.template.class == playerClass
+	function Talented:DeleteTemplateByReference(template)
+		if type(template) ~= "table" or template.talentGroup or template.inspect_name then
+			return false
+		end
+		local db = self:GetTemplatesDB()
+		local key = nil
+		local name = template.name
+		if type(name) == "string" and db[name] == template then
+			key = name
+		else
+			for candidate, entry in pairs(db) do
+				if entry == template then
+					key = candidate
+					break
+				end
+			end
+		end
+		if not key then
+			return false
+		end
+		db[key] = nil
+		if self.template == template then
+			self:SetTemplate()
+		end
+		self:UpdateView()
+		self:QueueTemplateMenuRefresh()
+		return true
+	end
+
+	function Talented:SaveInspectedTemplate(template)
+		if type(template) ~= "table" or not template.inspect_name then
+			return nil
+		end
+		local baseName = template.menu_name or template.name or template.inspect_name
+		local saved = self:ImportFromOther(baseName, template)
+		if saved and not self:GetTemplateMenuColor(saved) then
+			local r, g, b = self:GetClassMenuColor(saved.class)
+			if r and g and b then
+				self:SetTemplateMenuColor(saved, r, g, b)
+			end
+		end
+		self:QueueTemplateMenuRefresh()
+		return saved
+	end
+
+	local contextMenuTicker
+	function Talented:QueueTemplateContextMenu(template, anchor)
+		if type(template) ~= "table" then
+			return
+		end
+		self._pendingTemplateContext = {template = template, anchor = anchor}
+		if not contextMenuTicker then
+			contextMenuTicker = CreateFrame("Frame")
+			contextMenuTicker:Hide()
+			contextMenuTicker:SetScript("OnUpdate", function(self)
+				self:Hide()
+				local pending = Talented and Talented._pendingTemplateContext
+				if not pending then
+					return
+				end
+				Talented._pendingTemplateContext = nil
+				Talented:OpenTemplateContextMenu(pending.anchor, pending.template)
+			end)
+		end
+		contextMenuTicker:Show()
 	end
 
 	local function Menu_NewTemplate(entry, class)
@@ -1654,15 +1883,19 @@ do
 		return a < b
 	end
 
-	local function update_template_entry(entry, name, template, class)
-		local points = template.points
-		if not points then
-			points = Talented:GetTemplateInfo(template)
-			template.points = points
+		local function update_template_entry(entry, name, template, class, forceClassColor)
+			local points = template.points
+			if not points then
+				points = Talented:GetTemplateInfo(template)
+				template.points = points
+			end
+			entry.sortKey = tostring(name or "")
+			if forceClassColor then
+				entry.text = ColorizeByClass(class, name) .. points
+			else
+				entry.text = Talented:ColorizeTemplateName(template, class, name) .. points
+			end
 		end
-		entry.sortKey = tostring(name or "")
-		entry.text = ColorizeByClass(class, name) .. points
-	end
 
 	function Talented:MakeTemplateMenu()
 		local menu = self:CreateTemplateMenu()
@@ -1713,7 +1946,7 @@ do
 						menuList[index] = entry
 					end
 					index = index + 1
-					update_template_entry(entry, template.menu_name or template.name or name, template, template.class)
+					update_template_entry(entry, template.menu_name or template.name or name, template, template.class, true)
 					entry.func = Menu_SetTemplate
 					entry.checked = (self.template == template)
 					entry.arg1 = template
@@ -2127,9 +2360,12 @@ do
 	end
 
 	function Talented:CloseMenu()
-		if type(HideDropDownMenu) == "function" then
+		if type(CloseDropDownMenus) == "function" then
+			CloseDropDownMenus()
+		elseif type(HideDropDownMenu) == "function" then
 			HideDropDownMenu(1)
 		end
+		self._openDropdownMenu = nil
 	end
 
 	function Talented:GetDropdownFrame(frame)
@@ -2149,9 +2385,13 @@ do
 		return dropdown
 	end
 
-	local function ShowMenu(menu, dropdown)
+	local function ShowMenu(menu, dropdown, anchorName, xOffset, yOffset)
 		if type(EasyMenu) == "function" then
-			EasyMenu(menu, dropdown)
+			if anchorName then
+				EasyMenu(menu, dropdown, anchorName, xOffset or 0, yOffset or 0, "MENU")
+			else
+				EasyMenu(menu, dropdown)
+			end
 			return true
 		end
 		if type(UIDropDownMenu_Initialize) == "function" and type(ToggleDropDownMenu) == "function" and type(UIDropDownMenu_AddButton) == "function" then
@@ -2184,7 +2424,24 @@ do
 			elseif type(HideDropDownMenu) == "function" then
 				HideDropDownMenu(1)
 			end
-			ToggleDropDownMenu(1, nil, dropdown, dropdown.relativeTo, dropdown.xOffset or 0, dropdown.yOffset or 0)
+			local anchor = anchorName
+			local ox, oy = xOffset, yOffset
+			if not anchor then
+				anchor = dropdown.relativeTo
+				ox = dropdown.xOffset or 0
+				oy = dropdown.yOffset or 0
+			end
+			ToggleDropDownMenu(1, nil, dropdown, anchor, ox or 0, oy or 0)
+			local maxLevels = UIDROPDOWNMENU_MAXLEVELS or 2
+			local maxButtons = UIDROPDOWNMENU_MAXBUTTONS or 32
+			for level = 1, maxLevels do
+				for i = 1, maxButtons do
+					local button = _G["DropDownList" .. tostring(level) .. "Button" .. tostring(i)]
+					if button and type(button.RegisterForClicks) == "function" then
+						button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+					end
+				end
+			end
 			return true
 		end
 		if Talented and Talented.Print then
@@ -2193,11 +2450,142 @@ do
 		return nil
 	end
 
+	function Talented:BuildTemplateContextMenu(template)
+		if type(template) ~= "table" then
+			return nil
+		end
+		local function ResolveContextTemplate(a1, a2)
+			if type(a2) == "table" then
+				return a2
+			end
+			if type(a1) == "table" then
+				return a1
+			end
+			if type(_G.this) == "table" and type(_G.this.arg1) == "table" then
+				return _G.this.arg1
+			end
+			return nil
+		end
+		local menu = self:GetNamedMenu("TemplateContext")
+		wipe(menu)
+
+		if template.inspect_name then
+			menu[1] = {
+				text = "Save template",
+				func = function(a1, a2)
+					local inspectedTemplate = ResolveContextTemplate(a1, a2)
+					if inspectedTemplate then
+						Talented:SaveInspectedTemplate(inspectedTemplate)
+					end
+				end,
+				arg1 = template
+			}
+			else
+				local deleteText = L["Delete template"] or "Delete template"
+				menu[1] = {
+					text = "|cffff4040" .. deleteText .. "|r",
+					func = function(a1, a2)
+						local savedTemplate = ResolveContextTemplate(a1, a2)
+						if savedTemplate then
+							Talented:DeleteTemplateByReference(savedTemplate)
+						end
+				end,
+				arg1 = template
+			}
+		end
+
+		if not menu[1] then
+			return nil
+		end
+		return menu
+	end
+
+	function Talented:OpenTemplateContextSubmenu(template)
+		local menu = self:BuildTemplateContextMenu(template)
+		if not menu then
+			return nil
+		end
+		if type(ToggleDropDownMenu) ~= "function" then
+			return nil
+		end
+		local level = tonumber(UIDROPDOWNMENU_MENU_LEVEL) or 1
+		local button = _G.this
+		if type(button) ~= "table" then
+			return nil
+		end
+		button.value = menu
+		ToggleDropDownMenu(level + 1, menu)
+		return true
+	end
+
+	function Talented:OpenTemplateContextMenu(anchor, template)
+		local menu = self:BuildTemplateContextMenu(template)
+		if not menu then
+			return
+		end
+
+		if type(anchor) == "table" then
+			local n = type(anchor.GetName) == "function" and anchor:GetName() or nil
+			if type(n) == "string" and string.find(n, "^DropDownList%d+", 1, false) then
+				anchor = nil
+			elseif type(anchor.IsShown) == "function" and not anchor:IsShown() then
+				anchor = nil
+			end
+		end
+		local fallbackAnchor = (self.base and self.base.bmode) or self.base or UIParent
+		local dropdown = self:GetDropdownFrame(anchor or fallbackAnchor)
+		ShowMenu(menu, dropdown, "cursor", -8, 8)
+	end
+
+	local templateMenuRefreshFrame
+	function Talented:IsTemplateMenuOpen()
+		local list = _G.DropDownList1
+		if not list or not list.IsShown or not list:IsShown() then
+			return false
+		end
+		if UIDROPDOWNMENU_OPEN_MENU ~= "TalentedDropDown" then
+			return false
+		end
+		return self._openDropdownMenu == "template"
+	end
+
+	function Talented:RefreshOpenTemplateMenu()
+		if not self:IsTemplateMenuOpen() then
+			return false
+		end
+		local anchor = self._lastTemplateMenuAnchor
+		if type(anchor) ~= "table" or (type(anchor.IsShown) == "function" and not anchor:IsShown()) then
+			anchor = (self.base and self.base.bmode) or self.base or UIParent
+		end
+		ShowMenu(self:MakeTemplateMenu(), self:GetDropdownFrame(anchor))
+		return true
+	end
+
+	function Talented:QueueTemplateMenuRefresh()
+		self._templateMenuRefreshQueued = true
+		if not templateMenuRefreshFrame then
+			templateMenuRefreshFrame = CreateFrame("Frame")
+			templateMenuRefreshFrame:Hide()
+			templateMenuRefreshFrame:SetScript("OnUpdate", function(self)
+				self:Hide()
+				if not Talented then
+					return
+				end
+				Talented._templateMenuRefreshQueued = nil
+				Talented:RefreshOpenTemplateMenu()
+			end)
+		end
+		templateMenuRefreshFrame:Show()
+	end
+
 	function Talented:OpenTemplateMenu(frame)
+		self._openDropdownMenu = "template"
+		self._lastTemplateMenuAnchor = frame
 		ShowMenu(self:MakeTemplateMenu(), self:GetDropdownFrame(frame))
 	end
 
 	function Talented:OpenActionMenu(frame)
+		self._openDropdownMenu = "action"
 		ShowMenu(self:MakeActionMenu(), self:GetDropdownFrame(frame))
 	end
 

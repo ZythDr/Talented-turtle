@@ -1181,6 +1181,91 @@ do
 		return RawSpellTextScore(text)
 	end
 
+	local function BuildDurationHints(durationVotes)
+		local durationHints = {}
+		for durationIndex, bucket in pairs(durationVotes or {}) do
+			local bestValue
+			local bestCount = -1
+			for secValue, count in pairs(bucket) do
+				local n = tonumber(secValue)
+				if n and (count > bestCount or (count == bestCount and (not bestValue or n < bestValue))) then
+					bestValue = n
+					bestCount = count
+				end
+			end
+			if bestValue then
+				durationHints[durationIndex] = bestValue
+			end
+		end
+		return durationHints
+	end
+
+	local function IndexSpellRecRecord(index, scores, durationVotes, spellId, getField, getIcon)
+		local name = getField(spellId, "name")
+		if type(name) ~= "string" or name == "" then
+			return false
+		end
+		local function setBest(key, candidateId, score)
+			if type(key) ~= "string" or key == "" then
+				return
+			end
+			local prev = scores[key]
+			local prevId = index[key]
+			if prev == nil or score > prev or (score == prev and (not prevId or candidateId < prevId)) then
+				index[key] = candidateId
+				scores[key] = score
+			end
+		end
+
+		local tipText = getField(spellId, "tooltip")
+		local descText = getField(spellId, "description")
+		local bestText = ChooseBestSpellText(tipText, descText)
+		local durationIndex = ToNumber(getField(spellId, "durationIndex"))
+		if durationIndex and durationIndex > 0 then
+			local hint = ParseDurationHintSeconds(bestText)
+			if type(hint) == "number" and hint > 0 then
+				local bucket = durationVotes[durationIndex]
+				if not bucket then
+					bucket = {}
+					durationVotes[durationIndex] = bucket
+				end
+				local key = tostring(hint)
+				bucket[key] = (bucket[key] or 0) + 1
+			end
+		end
+
+		local score = ScoreSpellRecText(bestText)
+		local rank = ParseRankNumber(getField(spellId, "rank")) or 1
+		local lowerName = string.lower(name)
+		local baseKey = lowerName .. "\031" .. tostring(rank)
+		local nameKey = "@n@\031" .. lowerName
+		setBest(baseKey, spellId, score)
+		setBest(nameKey, spellId, score - math.abs(rank - 1))
+		if type(getIcon) == "function" then
+			local iconId = getField(spellId, "spellIconID")
+			local iconPath = iconId and getIcon(iconId)
+			if type(iconPath) == "string" and iconPath ~= "" then
+				local lowerIcon = string.lower(iconPath)
+				local iconKey = baseKey .. "\031" .. lowerIcon
+				setBest(iconKey, spellId, score + 5)
+				local iconRankKey = "@ri@\031" .. tostring(rank) .. "\031" .. string.lower(iconPath)
+				setBest(iconRankKey, spellId, score + 3)
+				local nameIconKey = "@ni@\031" .. lowerName .. "\031" .. lowerIcon
+				setBest(nameIconKey, spellId, score + 2 - math.abs(rank - 1))
+				local normalized = NormalizeIconPath(iconPath)
+				if normalized and normalized ~= "" then
+					local normalizedKey = baseKey .. "\031" .. normalized
+					setBest(normalizedKey, spellId, score + 5)
+					local normalizedRankKey = "@ri@\031" .. tostring(rank) .. "\031" .. normalized
+					setBest(normalizedRankKey, spellId, score + 3)
+					local normalizedNameIconKey = "@ni@\031" .. lowerName .. "\031" .. normalized
+					setBest(normalizedNameIconKey, spellId, score + 2 - math.abs(rank - 1))
+				end
+			end
+		end
+		return true
+	end
+
 	local function BuildSpellRecIndex(maxSpellId)
 		local getField = _G.GetSpellRecField
 		if type(getField) ~= "function" then
@@ -1191,95 +1276,159 @@ do
 		local scores = {}
 		local durationVotes = {}
 		local indexed = 0
-		local function setBest(key, spellId, score)
-			if type(key) ~= "string" or key == "" then
-				return
-			end
-			local prev = scores[key]
-			local prevId = index[key]
-			if prev == nil or score > prev or (score == prev and (not prevId or spellId < prevId)) then
-				index[key] = spellId
-				scores[key] = score
+		for spellId = 1, maxSpellId do
+			if IndexSpellRecRecord(index, scores, durationVotes, spellId, getField, getIcon) then
+				indexed = indexed + 1
 			end
 		end
-			for spellId = 1, maxSpellId do
-						local name = getField(spellId, "name")
-							if type(name) == "string" and name ~= "" then
-								local tipText = getField(spellId, "tooltip")
-								local descText = getField(spellId, "description")
-								local bestText = ChooseBestSpellText(tipText, descText)
-								local durationIndex = ToNumber(getField(spellId, "durationIndex"))
-								if durationIndex and durationIndex > 0 then
-									local hint = ParseDurationHintSeconds(bestText)
-									if type(hint) == "number" and hint > 0 then
-										local bucket = durationVotes[durationIndex]
-										if not bucket then
-											bucket = {}
-											durationVotes[durationIndex] = bucket
-									end
-										local key = tostring(hint)
-										bucket[key] = (bucket[key] or 0) + 1
-									end
-								end
-								local score = ScoreSpellRecText(bestText)
-							local rank = ParseRankNumber(getField(spellId, "rank")) or 1
-						local lowerName = string.lower(name)
-						local baseKey = lowerName .. "\031" .. tostring(rank)
-						local nameKey = "@n@\031" .. lowerName
-						setBest(baseKey, spellId, score)
-						setBest(nameKey, spellId, score - math.abs(rank - 1))
-						if type(getIcon) == "function" then
-							local iconId = getField(spellId, "spellIconID")
-							local iconPath = iconId and getIcon(iconId)
-							if type(iconPath) == "string" and iconPath ~= "" then
-								local lowerIcon = string.lower(iconPath)
-								local iconKey = baseKey .. "\031" .. lowerIcon
-								setBest(iconKey, spellId, score + 5)
-								local iconRankKey = "@ri@\031" .. tostring(rank) .. "\031" .. string.lower(iconPath)
-								setBest(iconRankKey, spellId, score + 3)
-								local nameIconKey = "@ni@\031" .. lowerName .. "\031" .. lowerIcon
-								setBest(nameIconKey, spellId, score + 2 - math.abs(rank - 1))
-								local normalized = NormalizeIconPath(iconPath)
-								if normalized and normalized ~= "" then
-									local normalizedKey = baseKey .. "\031" .. normalized
-									setBest(normalizedKey, spellId, score + 5)
-									local normalizedRankKey = "@ri@\031" .. tostring(rank) .. "\031" .. normalized
-									setBest(normalizedRankKey, spellId, score + 3)
-									local normalizedNameIconKey = "@ni@\031" .. lowerName .. "\031" .. normalized
-									setBest(normalizedNameIconKey, spellId, score + 2 - math.abs(rank - 1))
-								end
-							end
-						end
-						indexed = indexed + 1
-						end
-				end
-			local durationHints = {}
-			for durationIndex, bucket in pairs(durationVotes) do
-				local bestValue
-				local bestCount = -1
-				for secValue, count in pairs(bucket) do
-					local n = tonumber(secValue)
-					if n and (count > bestCount or (count == bestCount and (not bestValue or n < bestValue))) then
-						bestValue = n
-						bestCount = count
-					end
-				end
-				if bestValue then
-					durationHints[durationIndex] = bestValue
-				end
-			end
-			return index, indexed, durationHints
-		end
+		return index, indexed, BuildDurationHints(durationVotes)
+	end
 
-	function Talented:GetSpellRecIndex(maxSpellId)
+	local RESOLVER_IDS_PER_TICK = 3000
+	local RESOLVER_RANKS_PER_TICK = 320
+	local RESOLVER_IDS_STEP = 120
+	local RESOLVER_TIME_BUDGET = 0.006
+	local RESOLVER_BOOST_TIME_BUDGET = 0.012
+	local RESOLVER_BOOST_WINDOW = 1.5
+
+	local function GetResolverFrameBudget(self)
+		local now = type(GetTime) == "function" and GetTime() or 0
+		if type(self._resolverBoostUntil) == "number" and now < self._resolverBoostUntil then
+			return RESOLVER_BOOST_TIME_BUDGET
+		end
+		return RESOLVER_TIME_BUDGET
+	end
+
+	function Talented:BoostResolverWindow()
+		if type(GetTime) ~= "function" then
+			return
+		end
+		local untilTime = GetTime() + RESOLVER_BOOST_WINDOW
+		if type(self._resolverBoostUntil) ~= "number" or untilTime > self._resolverBoostUntil then
+			self._resolverBoostUntil = untilTime
+		end
+	end
+
+	function Talented:EnsureResolverTicker()
+		if self._resolverTicker or type(CreateFrame) ~= "function" then
+			return
+		end
+		local addon = self
+		local frame = CreateFrame("Frame", nil, UIParent)
+		frame:Hide()
+		frame:SetScript("OnUpdate", function()
+			addon:OnResolverTick()
+		end)
+		self._resolverTicker = frame
+	end
+
+	function Talented:HasResolverWork()
+		local queue = self._spellResolveQueue
+		return self._spellRecIndexBuild ~= nil or (type(queue) == "table" and type(queue.order) == "table" and table.getn(queue.order) > 0)
+	end
+
+	function Talented:UpdateResolverTickerState()
+		local frame = self._resolverTicker
+		if not frame then
+			return
+		end
+		if self:HasResolverWork() then
+			frame:Show()
+		else
+			frame:Hide()
+		end
+	end
+
+	function Talented:StartAsyncSpellRecIndex(maxSpellId)
+		local getField = _G.GetSpellRecField
+		if type(getField) ~= "function" then
+			return false
+		end
 		maxSpellId = tonumber(maxSpellId) or 80000
 		if maxSpellId < 1 then
 			maxSpellId = 80000
+		end
+		self:BoostResolverWindow()
+		local cache = self._spellRecIndexCache
+		if cache and cache.maxSpellId and cache.maxSpellId >= maxSpellId and type(cache.index) == "table" then
+			return true
+		end
+		local build = self._spellRecIndexBuild
+		if build and build.maxSpellId and build.maxSpellId >= maxSpellId then
+			self:EnsureResolverTicker()
+			self:UpdateResolverTickerState()
+			return true
+		end
+		self._spellRecIndexBuild = {
+			maxSpellId = maxSpellId,
+			nextSpellId = 1,
+			getField = getField,
+			getIcon = _G.GetSpellIconTexture,
+			index = {},
+			scores = {},
+			durationVotes = {},
+			indexed = 0
+		}
+		self:EnsureResolverTicker()
+		self:UpdateResolverTickerState()
+		return true
+	end
+
+	function Talented:ProcessAsyncSpellRecIndex(maxPerTick, deadline)
+		local build = self._spellRecIndexBuild
+		if not build then
+			return true
+		end
+		maxPerTick = tonumber(maxPerTick) or RESOLVER_IDS_PER_TICK
+		if maxPerTick < 1 then
+			maxPerTick = RESOLVER_IDS_PER_TICK
+		end
+		local count = 0
+		while count < maxPerTick and build.nextSpellId <= build.maxSpellId do
+			local n = 0
+			while n < RESOLVER_IDS_STEP and count < maxPerTick and build.nextSpellId <= build.maxSpellId do
+				if IndexSpellRecRecord(build.index, build.scores, build.durationVotes, build.nextSpellId, build.getField, build.getIcon) then
+					build.indexed = build.indexed + 1
+				end
+				build.nextSpellId = build.nextSpellId + 1
+				count = count + 1
+				n = n + 1
+			end
+			if deadline and type(GetTime) == "function" and GetTime() >= deadline then
+				break
+			end
+		end
+		if build.nextSpellId > build.maxSpellId then
+			self._spellRecIndexCache = {
+				index = build.index,
+				indexed = build.indexed,
+				maxSpellId = build.maxSpellId,
+				durationHints = BuildDurationHints(build.durationVotes)
+			}
+			self._spellRecIndexBuild = nil
+			SpellRecDescCache = {}
+			return true
+		end
+		return false
+	end
+
+	function Talented:GetSpellRecIndex(maxSpellId, allowSyncBuild)
+		maxSpellId = tonumber(maxSpellId) or 80000
+		if maxSpellId < 1 then
+			maxSpellId = 80000
+		end
+		if allowSyncBuild == nil then
+			allowSyncBuild = true
 		end
 		local cache = self._spellRecIndexCache
 		if cache and cache.maxSpellId and cache.maxSpellId >= maxSpellId and type(cache.index) == "table" then
 			return cache.index, cache.indexed or 0
 		end
+		if not allowSyncBuild then
+			self:StartAsyncSpellRecIndex(maxSpellId)
+			return cache and cache.index or nil, cache and cache.indexed or 0
+		end
+		self._spellRecIndexBuild = nil
 		local index, indexed, durationHints = BuildSpellRecIndex(maxSpellId)
 		if type(index) ~= "table" then
 			return nil, 0
@@ -1291,6 +1440,7 @@ do
 			durationHints = durationHints or {}
 		}
 		SpellRecDescCache = {}
+		self:UpdateResolverTickerState()
 		return index, indexed
 	end
 
@@ -1322,7 +1472,201 @@ do
 		return nil
 	end
 
-	function Talented:ResolveTalentRankSpellID(class, tab, index, rank, spellIndex)
+	function Talented:QueueClassSpellResolution(class, maxSpellId)
+		if type(_G.GetSpellRecField) ~= "function" then
+			return false
+		end
+		class = type(class) == "string" and string.upper(class) or nil
+		if not class then
+			return false
+		end
+		local _, playerClass = UnitClass("player")
+		if class == playerClass then
+			return false
+		end
+		local data = self:UncompressSpellData(class)
+		if type(data) ~= "table" then
+			return false
+		end
+		maxSpellId = tonumber(maxSpellId) or 80000
+		if maxSpellId < 1 then
+			maxSpellId = 80000
+		end
+
+		local queue = self._spellResolveQueue
+		if type(queue) ~= "table" then
+			queue = {order = {}, byClass = {}}
+			self._spellResolveQueue = queue
+		end
+		queue.order = queue.order or {}
+		queue.byClass = queue.byClass or {}
+
+		local entry = queue.byClass[class]
+		if not entry then
+			entry = {
+				class = class,
+				tab = 1,
+				index = 1,
+				rank = 1,
+				maxSpellId = maxSpellId,
+				retryAtMax = false
+			}
+			queue.byClass[class] = entry
+			queue.order[table.getn(queue.order) + 1] = class
+		elseif maxSpellId > (entry.maxSpellId or 0) then
+			entry.maxSpellId = maxSpellId
+		end
+
+		self:BoostResolverWindow()
+		self:StartAsyncSpellRecIndex(entry.maxSpellId)
+		return true
+	end
+
+	function Talented:PrimeTemplateSpellResolution(template)
+		if type(template) ~= "table" then
+			return false
+		end
+		return self:QueueClassSpellResolution(template.class, 80000)
+	end
+
+	function Talented:ProcessClassResolveEntry(entry, budget, deadline)
+		local data = self:UncompressSpellData(entry.class)
+		if type(data) ~= "table" then
+			return true, 0
+		end
+		local cache = self._spellRecIndexCache
+		local spellIndex = cache and cache.index
+		local cacheMax = cache and cache.maxSpellId or 0
+		local used = 0
+
+		while used < budget do
+			local tree = data[entry.tab]
+			if not tree then
+				if entry.retryAtMax and cacheMax < 200000 then
+					entry.retryAtMax = false
+					entry.maxSpellId = 200000
+					entry.tab = 1
+					entry.index = 1
+					entry.rank = 1
+					self:StartAsyncSpellRecIndex(200000)
+					return false, used
+				end
+				return true, used
+			end
+
+			local talent = tree[entry.index]
+			if not talent then
+				entry.tab = entry.tab + 1
+				entry.index = 1
+				entry.rank = 1
+			else
+				local ranks = talent.ranks
+				if type(ranks) ~= "table" then
+					entry.index = entry.index + 1
+					entry.rank = 1
+				else
+					local maxRank = table.getn(ranks)
+					if maxRank < 1 then
+						entry.index = entry.index + 1
+						entry.rank = 1
+					elseif entry.rank > maxRank then
+						entry.index = entry.index + 1
+						entry.rank = 1
+					else
+						local current = ranks[entry.rank]
+						if type(current) == "number" then
+							local resolved = self:ResolveTalentRankSpellID(entry.class, entry.tab, entry.index, entry.rank, spellIndex, true)
+							if type(resolved) ~= "number" and cacheMax < 200000 then
+								entry.retryAtMax = true
+							end
+						end
+						entry.rank = entry.rank + 1
+						used = used + 1
+						if deadline and type(GetTime) == "function" and GetTime() >= deadline then
+							break
+						end
+					end
+				end
+			end
+		end
+
+		return false, used
+	end
+
+	function Talented:ProcessPendingClassResolves(maxRanks, deadline)
+		local queue = self._spellResolveQueue
+		if type(queue) ~= "table" or type(queue.order) ~= "table" or type(queue.byClass) ~= "table" then
+			return false
+		end
+		if table.getn(queue.order) < 1 then
+			return false
+		end
+		maxRanks = tonumber(maxRanks) or RESOLVER_RANKS_PER_TICK
+		if maxRanks < 1 then
+			maxRanks = RESOLVER_RANKS_PER_TICK
+		end
+
+		local processed = 0
+		local active = false
+		local maxSkips = table.getn(queue.order)
+		local skips = 0
+
+		while processed < maxRanks and table.getn(queue.order) > 0 do
+			if deadline and type(GetTime) == "function" and GetTime() >= deadline then
+				break
+			end
+			local class = table.remove(queue.order, 1)
+			local entry = queue.byClass[class]
+			if not entry then
+				skips = 0
+			else
+				active = true
+				local cache = self._spellRecIndexCache
+				local cacheMax = cache and cache.maxSpellId or 0
+				local requiredMax = tonumber(entry.maxSpellId) or 80000
+				if cacheMax < requiredMax then
+					self:StartAsyncSpellRecIndex(requiredMax)
+					queue.order[table.getn(queue.order) + 1] = class
+					skips = skips + 1
+					if skips >= maxSkips then
+						break
+					end
+				else
+					local budget = maxRanks - processed
+					local done, used = self:ProcessClassResolveEntry(entry, budget, deadline)
+					if used > 0 then
+						processed = processed + used
+					end
+					if done then
+						queue.byClass[class] = nil
+					else
+						queue.order[table.getn(queue.order) + 1] = class
+					end
+					skips = 0
+					maxSkips = table.getn(queue.order)
+					if maxSkips < 1 then
+						maxSkips = 1
+					end
+				end
+			end
+		end
+
+		return active or table.getn(queue.order) > 0
+	end
+
+	function Talented:OnResolverTick()
+		local deadline
+		if type(GetTime) == "function" then
+			deadline = GetTime() + GetResolverFrameBudget(self)
+		end
+		if self._spellRecIndexBuild then
+			self:ProcessAsyncSpellRecIndex(RESOLVER_IDS_PER_TICK, deadline)
+		end
+		self:ProcessPendingClassResolves(RESOLVER_RANKS_PER_TICK, deadline)
+		self:UpdateResolverTickerState()
+	end
+
+	function Talented:ResolveTalentRankSpellID(class, tab, index, rank, spellIndex, nonBlocking)
 		local data = self:UncompressSpellData(class)
 		local talent = data and data[tab] and data[tab][index]
 		if type(talent) ~= "table" or type(talent.name) ~= "string" or type(talent.ranks) ~= "table" then
@@ -1336,7 +1680,11 @@ do
 			return nil
 		end
 		if not spellIndex then
-			spellIndex = self:GetSpellRecIndex()
+			if nonBlocking then
+				spellIndex = self:GetSpellRecIndex(80000, false)
+			else
+				spellIndex = self:GetSpellRecIndex()
+			end
 		end
 		if type(spellIndex) ~= "table" then
 			return nil
@@ -1347,8 +1695,12 @@ do
 			local cache = self._spellRecIndexCache
 			local currentMax = cache and cache.maxSpellId or 0
 			if currentMax < 200000 then
-				spellIndex = self:GetSpellRecIndex(200000)
-				resolved = LookupResolvedSpellID(spellIndex, talent.name, rank, iconKey)
+				if nonBlocking then
+					self:StartAsyncSpellRecIndex(200000)
+				else
+					spellIndex = self:GetSpellRecIndex(200000)
+					resolved = LookupResolvedSpellID(spellIndex, talent.name, rank, iconKey)
+				end
 			end
 		end
 		if type(resolved) == "number" then
@@ -1587,11 +1939,14 @@ do
 		SlashCmdList.TALENTED = function(msg)
 			self:OnChatCommand(msg)
 		end
-		SLASH_TALENTED1 = "/talented"
-		SLASH_TALENTED2 = "/talentd"
-		self:RegisterComm("Talented")
-		self:Print("Ace2 vanilla build r20260215-23 loaded")
-	end
+			SLASH_TALENTED1 = "/talented"
+			SLASH_TALENTED2 = "/talentd"
+			self:RegisterComm("Talented")
+			if type(_G.GetSpellRecField) == "function" then
+				self:StartAsyncSpellRecIndex(80000)
+			end
+			self:Print("Ace2 vanilla build r20260215-23 loaded")
+		end
 
 	function Talented:OnChatCommand(input)
 		if not input or string.trim(input) == "" then
@@ -1697,13 +2052,33 @@ do
 	end
 
 	function Talented:UpdateTemplateName(template, newname)
-		if self:GetTemplatesDB()[newname] or template.talentGroup or type(newname) ~= "string" or newname == "" then return end
+		if type(template) ~= "table" or template.talentGroup or type(newname) ~= "string" then
+			return
+		end
+		newname = string.gsub(newname, "^%s+", "")
+		newname = string.gsub(newname, "%s+$", "")
+		if newname == "" then
+			return
+		end
 
-		local oldname = template.name
-		template.name = newname
 		local t = self:GetTemplatesDB()
+		local existing = t[newname]
+		if existing and existing ~= template then
+			return
+		end
+
+		local oldkey
+		for key, value in pairs(t) do
+			if value == template then
+				oldkey = key
+				break
+			end
+		end
+		template.name = newname
+		if oldkey and oldkey ~= newname then
+			t[oldkey] = nil
+		end
 		t[newname] = template
-		t[oldname] = nil
 	end
 
 	do
@@ -1767,16 +2142,16 @@ do
 
 			local info = self:UncompressSpellData(class)
 
-			for tab, tree in ipairs(info) do
-				local t = {}
-				template[tab] = t
-				for index = 1, table.getn(tree) do
-					t[index] = 0
+				for tab, tree in ipairs(info) do
+					local t = {}
+					template[tab] = t
+					for index = 1, table.getn(tree) do
+						t[index] = 0
+					end
 				end
+				self:PrimeTemplateSpellResolution(template)
+				return template
 			end
-
-			return template
-		end
 
 			Talented.importers = {}
 			Talented.exporters = {}
@@ -1812,6 +2187,7 @@ do
 			self:Print(L["The template '%s' is no longer valid and has been removed."], name)
 			return
 		end
+		self:PrimeTemplateSpellResolution(template)
 		local base = self:CreateBaseFrame()
 		if not self.alternates then
 			self:UpdatePlayerSpecs()
@@ -1826,6 +2202,7 @@ do
 		if not template then
 			template = assert(self:GetActiveSpec())
 		end
+		self:PrimeTemplateSpellResolution(template)
 		local view = self:CreateBaseFrame().view
 		local old = view.template
 		if template ~= old then
@@ -2052,6 +2429,21 @@ do
 	function Talented:LoadTemplates()
 		local db = self:GetTemplatesDB()
 		local invalid = {}
+		local function NormalizeTemplateColor(color)
+			if type(color) ~= "table" then
+				return nil
+			end
+			local r = tonumber(color.r)
+			local g = tonumber(color.g)
+			local b = tonumber(color.b)
+			if not r or not g or not b then
+				return nil
+			end
+			if r < 0 then r = 0 elseif r > 1 then r = 1 end
+			if g < 0 then g = 0 elseif g > 1 then g = 1 end
+			if b < 0 then b = 0 elseif b > 1 then b = 1 end
+			return {r = r, g = g, b = b}
+		end
 		for name, code in pairs(db) do
 			if type(code) == "string" then
 				local class = self:GetTemplateStringClass(code)
@@ -2062,6 +2454,16 @@ do
 						class = class
 					}
 				else
+					db[name] = nil
+					invalid[table.getn(invalid) + 1] = name
+				end
+				elseif type(code) == "table" and type(code.code) == "string" then
+					local class = code.class or self:GetTemplateStringClass(code.code)
+					if class then
+						code.class = class
+						code.name = name
+						code.menuColor = NormalizeTemplateColor(code.menuColor)
+					else
 					db[name] = nil
 					invalid[table.getn(invalid) + 1] = name
 				end
@@ -2082,7 +2484,20 @@ do
 					template.talentGroup = nil
 					Talented:PackTemplate(template)
 					if template.code then
-						_db[name] = template.code
+						if type(template.menuColor) == "table" then
+							_db[name] = {
+								name = template.name or name,
+								class = template.class,
+								code = template.code,
+								menuColor = {
+									r = template.menuColor.r,
+									g = template.menuColor.g,
+									b = template.menuColor.b
+								}
+							}
+						else
+							_db[name] = template.code
+						end
 					end
 				end
 			end
@@ -2660,7 +3075,7 @@ do
 		end
 
 		if IsPlaceholderRanks(ranks) then
-			local resolved = self:ResolveTalentRankSpellID(class, tab, index, rank)
+			local resolved = self:ResolveTalentRankSpellID(class, tab, index, rank, nil, true)
 			if type(resolved) == "number" then
 				return resolved
 			end
@@ -2673,13 +3088,13 @@ do
 		end
 		local _, playerClass = UnitClass("player")
 		if class ~= playerClass then
-			local remapped = self:ResolveTalentRankSpellID(class, tab, index, rank)
+			local remapped = self:ResolveTalentRankSpellID(class, tab, index, rank, nil, true)
 			if type(remapped) == "number" then
 				spell = remapped
 			end
 		end
 		if spell == rank then
-			local resolved = self:ResolveTalentRankSpellID(class, tab, index, rank)
+			local resolved = self:ResolveTalentRankSpellID(class, tab, index, rank, nil, true)
 			if type(resolved) == "number" then
 				return resolved
 			end
@@ -3645,13 +4060,38 @@ do
 			end
 		end
 		local edit = self.frame.editname
+		local colorbutton = self.frame.templatecolor
 		if edit then
 			if template.talentGroup then
 				edit:Hide()
+				if colorbutton then
+					colorbutton:Hide()
+				end
 			else
 				edit:Show()
 				SetTextSafe(edit, template and template.name)
+				if Talented.GetTemplateMenuColor then
+					local r, g, b = Talented:GetTemplateMenuColor(template)
+					if r then
+						edit:SetTextColor(r, g, b)
+					else
+						edit:SetTextColor(GREEN_FONT_COLOR.r, GREEN_FONT_COLOR.g, GREEN_FONT_COLOR.b)
+					end
+				end
+				if colorbutton then
+					local canColor = Talented.IsTemplateMenuColorEditable and Talented:IsTemplateMenuColorEditable(template)
+					if canColor then
+						colorbutton:Show()
+						if Talented.RefreshTemplateColorButton then
+							Talented:RefreshTemplateColorButton(colorbutton, template)
+						end
+					else
+						colorbutton:Hide()
+					end
+				end
 			end
+		elseif colorbutton then
+			colorbutton:Hide()
 		end
 		local cb, activate = self.frame.checkbox, self.frame.bactivate
 		if cb then
@@ -4644,8 +5084,12 @@ end
 
 do
 	local prev_script
+	local prev_inspect_show
+	local prev_twinspect_show
 	local TURTLE_INSPECT_PREFIX = "TW_CHAT_MSG_WHISPER"
 	local TURTLE_INSPECT_DONE = "INSTalentEND;"
+	local INSPECT_REQUEST_THROTTLE = 0.75
+	local INSPECT_UI_SUPPRESS_WINDOW = 1.25
 
 	local function GetTurtleInspectSpec()
 		local com = _G.inspectCom or _G.InspectTalentsComFrame
@@ -4680,21 +5124,23 @@ do
 		return nil
 	end
 
-	local function GetInspectTalentRank(class, tab, index, talentGroup, turtleOnly)
-		if turtleOnly then
-			local rank = GetTurtleInspectRank(class, tab, index)
-			if type(rank) == "number" then
-				return rank, true
+	local function GetInspectTalentRank(class, tab, index, talentGroup, preferTurtle)
+		local rank
+		if not preferTurtle then
+			local _, _, _, _, inspectRank = GetTalentInfo(tab, index, true, nil, talentGroup)
+			if type(inspectRank) == "number" then
+				return inspectRank, true
 			end
-			return 0, false
-		end
-		local _, _, _, _, rank = GetTalentInfo(tab, index, true, nil, talentGroup)
-		if type(rank) == "number" then
-			return rank, true
 		end
 		rank = GetTurtleInspectRank(class, tab, index)
 		if type(rank) == "number" then
 			return rank, true
+		end
+		if preferTurtle then
+			local _, _, _, _, inspectRank = GetTalentInfo(tab, index, true, nil, talentGroup)
+			if type(inspectRank) == "number" then
+				return inspectRank, true
+			end
 		end
 		return 0, false
 	end
@@ -4703,32 +5149,139 @@ do
 		if prev_script and prev_script ~= new_script then
 			pcall(prev_script, self or _G.this)
 		end
-		local unit = Talented:GetInspectUnit()
-		if unit and type(_G.NotifyInspect) == "function" then
-			pcall(_G.NotifyInspect, unit)
-		end
+		Talented:RequestInspectData(Talented:GetInspectUnit(), "inspect-tab")
 		Talented:UpdateInspectTemplate()
 	end
 
-	function Talented:HookInspectUI()
-		if not InspectFrameTab3 then
-			return
+	local twinspect_show_proxy = function(a1, a2, a3, a4, a5, a6, a7, a8)
+		local addon = Talented
+		local suppress = addon and addon._suppressInspectTalentsUI
+		local untilTime = addon and addon._suppressInspectTalentsUIUntil
+		if suppress and type(untilTime) == "number" and type(GetTime) == "function" then
+			if GetTime() <= untilTime then
+				return
+			end
 		end
-		if not prev_script then
+		if prev_twinspect_show and prev_twinspect_show ~= twinspect_show_proxy then
+			return prev_twinspect_show(a1, a2, a3, a4, a5, a6, a7, a8)
+		end
+	end
+
+	local inspect_show_proxy = function(unit, a1, a2, a3, a4, a5, a6, a7, a8)
+		local r1, r2, r3, r4
+		if prev_inspect_show and prev_inspect_show ~= inspect_show_proxy then
+			r1, r2, r3, r4 = prev_inspect_show(unit, a1, a2, a3, a4, a5, a6, a7, a8)
+		end
+		Talented:RequestInspectData(unit or Talented:GetInspectUnit(), "inspect-show")
+		Talented:UpdateInspectTemplate()
+		return r1, r2, r3, r4
+	end
+
+	function Talented:RequestInspectData(unit, reason)
+		if not unit then
+			unit = self:GetInspectUnit()
+		end
+		if not unit then
+			return false
+		end
+		if type(UnitExists) == "function" and not UnitExists(unit) then
+			return false
+		end
+		if type(CanInspect) == "function" and not CanInspect(unit) then
+			return false
+		end
+		local name = UnitName(unit)
+		if not name or name == "" then
+			return false
+		end
+		local level = tonumber(UnitLevel(unit)) or 0
+		if level > 0 and level < 10 then
+			return false
+		end
+		if type(GetTime) == "function" then
+			local now = GetTime()
+			if self._inspectLastRequestName == name and type(self._inspectLastRequestAt) == "number" and (now - self._inspectLastRequestAt) < INSPECT_REQUEST_THROTTLE then
+				return false
+			end
+			self._inspectLastRequestName = name
+			self._inspectLastRequestAt = now
+			if reason == "inspect-tab" then
+				self._suppressInspectTalentsUI = nil
+				self._suppressInspectTalentsUIUntil = nil
+			else
+				self._suppressInspectTalentsUI = true
+				self._suppressInspectTalentsUIUntil = now + INSPECT_UI_SUPPRESS_WINDOW
+			end
+		end
+		if type(_G.TWInspectTalents_Show) == "function" and _G.TWInspectTalents_Show ~= twinspect_show_proxy then
+			prev_twinspect_show = _G.TWInspectTalents_Show
+			_G.TWInspectTalents_Show = twinspect_show_proxy
+		end
+		if type(_G.NotifyInspect) == "function" then
+			pcall(_G.NotifyInspect, unit)
+		end
+		local requested = false
+		if type(_G.SendAddonMessage) == "function" and HasTurtleInspectAPI() then
+			local _, class = UnitClass(unit)
+			local com = _G.inspectCom or _G.InspectTalentsComFrame
+			if type(com) == "table" and type(com.SPEC) == "table" and type(class) == "string" then
+				com.SPEC.class = class
+			end
+			if unit == "target" and type(_G.Ins_Init) == "function" then
+				pcall(_G.Ins_Init)
+			end
+			local prefix = "TW_CHAT_MSG_WHISPER<" .. tostring(name) .. ">"
+			pcall(_G.SendAddonMessage, prefix, "INSShowTalents", "GUILD")
+			requested = true
+		end
+		return requested
+	end
+
+	function Talented:HookInspectUI()
+		if InspectFrameTab3 and not prev_script then
 			prev_script = InspectFrameTab3:GetScript("OnClick")
 			InspectFrameTab3:SetScript("OnClick", new_script)
 		end
+		if type(_G.InspectFrame_Show) == "function" and _G.InspectFrame_Show ~= inspect_show_proxy then
+			prev_inspect_show = _G.InspectFrame_Show
+			_G.InspectFrame_Show = inspect_show_proxy
+		end
+		if type(_G.TWInspectTalents_Show) == "function" and _G.TWInspectTalents_Show ~= twinspect_show_proxy then
+			prev_twinspect_show = _G.TWInspectTalents_Show
+			_G.TWInspectTalents_Show = twinspect_show_proxy
+		end
+		self:RequestInspectData(self:GetInspectUnit(), "hook-inspect")
 	end
 
 	function Talented:UnhookInspectUI()
 		if not InspectFrameTab3 then
 			prev_script = nil
+			if _G.InspectFrame_Show == inspect_show_proxy and prev_inspect_show then
+				_G.InspectFrame_Show = prev_inspect_show
+			end
+			prev_inspect_show = nil
+			if _G.TWInspectTalents_Show == twinspect_show_proxy and prev_twinspect_show then
+				_G.TWInspectTalents_Show = prev_twinspect_show
+			end
+			prev_twinspect_show = nil
+			self._suppressInspectTalentsUI = nil
+			self._suppressInspectTalentsUIUntil = nil
 			return
 		end
 		if prev_script then
 			InspectFrameTab3:SetScript("OnClick", prev_script)
 			prev_script = nil
 		end
+		if _G.InspectFrame_Show == inspect_show_proxy and prev_inspect_show then
+			_G.InspectFrame_Show = prev_inspect_show
+		end
+		prev_inspect_show = nil
+		if _G.TWInspectTalents_Show == twinspect_show_proxy and prev_twinspect_show then
+			_G.TWInspectTalents_Show = prev_twinspect_show
+		end
+		prev_twinspect_show = nil
+		self._suppressInspectTalentsUI = nil
+		self._suppressInspectTalentsUIUntil = nil
 	end
 
 	function Talented:CheckHookInspectUI()
@@ -4737,6 +5290,7 @@ do
 		end
 		self:RegisterEvent("INSPECT_TALENT_READY")
 		self:RegisterEvent("CHAT_MSG_ADDON")
+		self:RegisterEvent("PLAYER_TARGET_CHANGED")
 		if self.db.profile.hook_inspect_ui then
 			if IsAddOnLoaded("Blizzard_InspectUI") then
 				self:HookInspectUI()
@@ -4746,6 +5300,7 @@ do
 				self:UnhookInspectUI()
 			end
 			self:UnregisterEvent("CHAT_MSG_ADDON")
+			self:UnregisterEvent("PLAYER_TARGET_CHANGED")
 		end
 	end
 
@@ -4755,7 +5310,8 @@ do
 			return
 		end
 		if addon == "Blizzard_InspectUI" and self.db and self.db.profile and self.db.profile.hook_inspect_ui then
-			self:HookInspectUI()
+			self:CheckHookInspectUI()
+			self:RequestInspectData(self:GetInspectUnit(), "addon-loaded")
 		end
 	end
 
@@ -4771,6 +5327,16 @@ do
 
 	function Talented:INSPECT_TALENT_READY()
 		self:UpdateInspectTemplate()
+	end
+
+	function Talented:PLAYER_TARGET_CHANGED()
+		if self.db and self.db.profile and not self.db.profile.hook_inspect_ui then
+			return
+		end
+		if not InspectFrame or not InspectFrame:IsShown() then
+			return
+		end
+		self:RequestInspectData(self:GetInspectUnit(), "target-changed")
 	end
 
 	function Talented:CHAT_MSG_ADDON(prefix, message, channel, sender)
@@ -4803,10 +5369,11 @@ do
 		if not info then
 			return
 		end
+		self:QueueClassSpellResolution(class, 80000)
 		local turtleSpec = GetTurtleInspectSpec()
 		local useTurtleInspect = HasTurtleInspectAPI()
 		if useTurtleInspect and type(turtleSpec) == "table" and type(turtleSpec.class) == "string" and turtleSpec.class ~= class then
-			return nil
+			useTurtleInspect = false
 		end
 		local retval
 		for talentGroup = 1, GetNumTalentGroups(true) do
@@ -4995,10 +5562,8 @@ end
 --
 
 do
-	local WH_MAP = "0zMcmVokRsaqbdrfwihuGINALpTjnyxtgevE"
 	local WH_PET_INFO_CLASS = "FFCTTTFTT FF       TT  CFCC  CCTCCC FCF CTTFFF"
 
-	local TALENTED_MAP = "012345abcdefABCDEFmnopqrMNOPQRtuvwxy*"
 	local TALENTED_CLASS_CODE = {
 		F = "Ferocity",
 		C = "Cunning",
@@ -5013,63 +5578,6 @@ do
 
 	function Talented:GetPetClassByFamily(index)
 		return TALENTED_CLASS_CODE[string.sub(WH_PET_INFO_CLASS, index, index)]
-	end
-
-	local function GetPetFamilyForClass(class)
-		return string.find(WH_PET_INFO_CLASS, string.sub(class, 1, 1), 1, true)
-	end
-
-	local function map(code, src, dst)
-		local temp = {}
-		for i = 1, string.len(code) do
-			local index = assert(string.find(src, string.sub(code, i, i), 1, true))
-			temp[i] = string.sub(dst, index, index)
-		end
-		return table.concat(temp)
-	end
-
-	local function ImportCode(code)
-		local a = (string.find(WH_MAP, string.sub(code, 1, 1), 1, true) - 1) * 10
-		local b = (string.find(WH_MAP, string.sub(code, 2, 2), 1, true) - 1) / 2
-		local family = a + math.floor(b)
-		local class = Talented:GetPetClassByFamily(family)
-
-		return TALENTED_CLASS_CODE[class] .. map(string.sub(code, 3), WH_MAP, TALENTED_MAP)
-	end
-
-	local function ExportCode(code)
-		local class = TALENTED_CLASS_CODE[string.sub(code, 1, 1)]
-		local family = GetPetFamilyForClass(class)
-
-		local a = math.floor(family / 10)
-		local b = (family - (a * 10)) * 2 + 1
-		return string.sub(WH_MAP, a + 1, a + 1) .. string.sub(WH_MAP, b, b) .. map(string.sub(code, 2), TALENTED_MAP, WH_MAP)
-	end
-
-	local function FixImportTemplate(self, template)
-		local data = self:UncompressSpellData(template.class)[1]
-		template = template[1]
-		for index, info in ipairs(data) do
-			if info.inactive then
-				if index > 1 and info.row == data[index - 1].row and info.column == data[index - 1].column then
-					template[index - 1] = template[index] + template[index - 1]
-				elseif index < table.getn(data) and info.row == data[index + 1].row and info.column == data[index + 1].column then
-					template[index + 1] = template[index] + template[index + 1]
-				end
-			end
-		end
-	end
-
-	local function FixExportTemplate(self, template)
-		local data = self:UncompressSpellData(template.class)[1]
-		template = template[1]
-		for index, info in ipairs(data) do
-			if info.inactive then
-				if index > 1 and info.row == data[index - 1].row and info.column == data[index - 1].column then
-					template[index - 1] = template[index] + template[index - 1]
-				end
-			end
-		end
 	end
 
 	Talented.importers["/%??petcalc#"] = function(self, url, dst)
