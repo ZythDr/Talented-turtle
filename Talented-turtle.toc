@@ -1,0 +1,28 @@
+## Interface: 11200
+## Title: Talented
+## Notes: The Talent Template Editor (Vanilla/Turtle)
+## Author: Jerry (Kader Edition)
+## Version: v2.4.8-vanilla-ace2-r20260215-14
+## SavedVariables: TalentedDB
+## X-Category: Interface Enhancements
+Ace2\AceLibrary\AceLibrary.lua
+Ace2\AceOO-2.0\AceOO-2.0.lua
+Ace2\AceEvent-2.0\AceEvent-2.0.lua
+Ace2\AceHook-2.1\AceHook-2.1.lua
+Ace2\AceDB-2.0\AceDB-2.0.lua
+Ace2\AceConsole-2.0\AceConsole-2.0.lua
+Ace2\AceAddon-2.0\AceAddon-2.0.lua
+Talented.lua
+Options.lua
+Data.lua
+ClassData\DRUID.lua
+ClassData\HUNTER.lua
+ClassData\MAGE.lua
+ClassData\PALADIN.lua
+ClassData\PRIEST.lua
+ClassData\ROGUE.lua
+ClassData\SHAMAN.lua
+ClassData\WARLOCK.lua
+ClassData\WARRIOR.lua
+Exporters.lua
+Ui.lua
