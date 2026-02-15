@@ -13,11 +13,12 @@ Talented.defaults = {
 			show_level_req = true,
 			offset = 48,
 			scale = 1,
-			add_bottom_offset = true,
-			framepos = {},
-			restore_bars = false,
-			template_tooltip_level = 60
-		},
+				add_bottom_offset = true,
+				framepos = {},
+				restore_bars = false,
+				hook_inspect_ui = true,
+				template_tooltip_level = 60
+			},
 	global = {templates = {}},
 	char = {targets = {}}
 }

@@ -1565,6 +1565,9 @@ do
 		self:RegisterDefaults("profile", self.defaults.profile)
 		self:RegisterDefaults("account", self.defaults.global)
 		self:RegisterDefaults("char", self.defaults.char)
+		if self.db and self.db.profile and self.db.profile.hook_inspect_ui == nil then
+			self.db.profile.hook_inspect_ui = true
+		end
 		self:GetTemplatesDB()
 
 		self:UpgradeOptions()
@@ -1938,7 +1941,7 @@ do
 		self:UpdatePlayerSpecs()
 	end
 
-	function Talented:CONFIRM_TALENT_WIPE(_, cost)
+	function Talented:CONFIRM_TALENT_WIPE(cost)
 		local dialog = StaticPopup_Show("CONFIRM_TALENT_WIPE")
 		if dialog then
 			MoneyFrame_Update(dialog:GetName() .. "MoneyFrame", cost)
@@ -2691,12 +2694,12 @@ do
 			rank = 1
 		end
 		local _, playerClass = UnitClass("player")
-		if template.class == playerClass and self._liveTalentDataBuilt and self._liveTalentDataBuilt[playerClass] then
-			return SafeFormat("|cff71d5ff[%s]|r", self:GetTalentName(template.class, tab, index))
-		end
 		local spell = self:GetTalentSpellID(template.class, tab, index, rank)
 		if type(spell) == "number" and CompatGetSpellInfo(spell) then
 			return SafeFormat("|cff71d5ff|Hspell:%d|h[%s]|h|r", spell, self:GetTalentName(template.class, tab, index))
+		end
+		if template.class == playerClass and self._liveTalentDataBuilt and self._liveTalentDataBuilt[playerClass] then
+			return SafeFormat("|cff71d5ff[%s]|r", self:GetTalentName(template.class, tab, index))
 		end
 		return SafeFormat("|cff71d5ff[%s]|r", self:GetTalentName(template.class, tab, index))
 	end
@@ -3711,6 +3714,12 @@ do
 
 	local function GetOpenChatEditBox()
 		local edit
+		if type(_G.GetCurrentKeyBoardFocus) == "function" then
+			edit = _G.GetCurrentKeyBoardFocus()
+			if edit and type(edit.GetObjectType) == "function" and edit:GetObjectType() == "EditBox" then
+				return edit
+			end
+		end
 		if type(_G.ChatEdit_GetActiveWindow) == "function" then
 			edit = _G.ChatEdit_GetActiveWindow()
 			if edit and type(edit.IsVisible) == "function" and edit:IsVisible() then
@@ -3757,6 +3766,45 @@ do
 		return false
 	end
 
+	local function TryInsertLinkInChat(link)
+		if type(link) ~= "string" or link == "" then
+			return false
+		end
+		local edit = GetOpenChatEditBox()
+		if not edit then
+			return false
+		end
+		if type(_G.ChatEdit_InsertLink) == "function" then
+			local ok, inserted = pcall(_G.ChatEdit_InsertLink, link)
+			if ok and inserted ~= false then
+				return true
+			end
+		end
+		if type(edit.Insert) == "function" then
+			local ok = pcall(edit.Insert, edit, link)
+			if ok then
+				if type(edit.SetFocus) == "function" then
+					pcall(edit.SetFocus, edit)
+				end
+				return true
+			end
+		end
+		if type(edit.GetText) == "function" and type(edit.SetText) == "function" then
+			local okGet, current = pcall(edit.GetText, edit)
+			if not okGet or type(current) ~= "string" then
+				current = ""
+			end
+			local okSet = pcall(edit.SetText, edit, current .. link)
+			if okSet then
+				if type(edit.SetFocus) == "function" then
+					pcall(edit.SetFocus, edit)
+				end
+				return true
+			end
+		end
+		return false
+	end
+
 	function TalentView:OnTalentClick(button, tab, index)
 		if IsChatLinkModifiedClick() then
 			local _, playerClass = UnitClass("player")
@@ -3765,9 +3813,7 @@ do
 			end
 			local link = Talented:GetTalentLink(self.template, tab, index)
 			if link then
-				if type(_G.ChatEdit_InsertLink) == "function" then
-					_G.ChatEdit_InsertLink(link)
-				else
+				if not TryInsertLinkInChat(link) then
 					Talented:ShowInDialog(link)
 				end
 			end
@@ -4480,7 +4526,7 @@ do
 			end
 		end
 
-	function Talented:MODIFIER_STATE_CHANGED(_, mod)
+	function Talented:MODIFIER_STATE_CHANGED(mod)
 		if string.sub(mod or "", -3) == "ALT" then
 			self:UpdateTooltip()
 		end
@@ -4598,11 +4644,70 @@ end
 
 do
 	local prev_script
-	local new_script = function()
-		local template = Talented:UpdateInspectTemplate()
-		if template then
-			Talented:OpenTemplate(template)
+	local TURTLE_INSPECT_PREFIX = "TW_CHAT_MSG_WHISPER"
+	local TURTLE_INSPECT_DONE = "INSTalentEND;"
+
+	local function GetTurtleInspectSpec()
+		local com = _G.inspectCom or _G.InspectTalentsComFrame
+		if type(com) == "table" and type(com.SPEC) == "table" then
+			return com.SPEC
 		end
+	end
+
+	local function HasTurtleInspectAPI()
+		return _G.InspectTalentsComFrame ~= nil or _G.InspectFrameTalentsTab_OnClick ~= nil
+	end
+
+	local function GetTurtleInspectRank(class, tab, index)
+		local spec = GetTurtleInspectSpec()
+		if type(spec) ~= "table" then
+			return nil
+		end
+		if class and type(spec.class) == "string" and spec.class ~= class then
+			return nil
+		end
+		local tree = spec[tab]
+		if type(tree) ~= "table" then
+			return nil
+		end
+		local talent = tree[index]
+		if type(talent) ~= "table" then
+			return nil
+		end
+		if type(talent.rank) == "number" then
+			return talent.rank
+		end
+		return nil
+	end
+
+	local function GetInspectTalentRank(class, tab, index, talentGroup, turtleOnly)
+		if turtleOnly then
+			local rank = GetTurtleInspectRank(class, tab, index)
+			if type(rank) == "number" then
+				return rank, true
+			end
+			return 0, false
+		end
+		local _, _, _, _, rank = GetTalentInfo(tab, index, true, nil, talentGroup)
+		if type(rank) == "number" then
+			return rank, true
+		end
+		rank = GetTurtleInspectRank(class, tab, index)
+		if type(rank) == "number" then
+			return rank, true
+		end
+		return 0, false
+	end
+
+	local new_script = function(self)
+		if prev_script and prev_script ~= new_script then
+			pcall(prev_script, self or _G.this)
+		end
+		local unit = Talented:GetInspectUnit()
+		if unit and type(_G.NotifyInspect) == "function" then
+			pcall(_G.NotifyInspect, unit)
+		end
+		Talented:UpdateInspectTemplate()
 	end
 
 	function Talented:HookInspectUI()
@@ -4631,6 +4736,7 @@ do
 			return
 		end
 		self:RegisterEvent("INSPECT_TALENT_READY")
+		self:RegisterEvent("CHAT_MSG_ADDON")
 		if self.db.profile.hook_inspect_ui then
 			if IsAddOnLoaded("Blizzard_InspectUI") then
 				self:HookInspectUI()
@@ -4639,10 +4745,11 @@ do
 			if IsAddOnLoaded("Blizzard_InspectUI") then
 				self:UnhookInspectUI()
 			end
+			self:UnregisterEvent("CHAT_MSG_ADDON")
 		end
 	end
 
-	function Talented:ADDON_LOADED(_, addon)
+	function Talented:ADDON_LOADED(addon)
 		if addon == "Blizzard_TalentUI" then
 			self:HookTalentFrameToggle()
 			return
@@ -4653,7 +4760,39 @@ do
 	end
 
 	function Talented:GetInspectUnit()
-		return InspectFrame and InspectFrame.unit
+		if InspectFrame and InspectFrame.unit then
+			return InspectFrame.unit
+		end
+		if type(UnitExists) == "function" and UnitExists("target") and type(CanInspect) == "function" and CanInspect("target") then
+			return "target"
+		end
+		return nil
+	end
+
+	function Talented:INSPECT_TALENT_READY()
+		self:UpdateInspectTemplate()
+	end
+
+	function Talented:CHAT_MSG_ADDON(prefix, message, channel, sender)
+		if type(prefix) ~= "string" or type(message) ~= "string" then
+			return
+		end
+		if not string.find(prefix, TURTLE_INSPECT_PREFIX, 1, true) then
+			return
+		end
+		if not string.find(message, TURTLE_INSPECT_DONE, 1, true) then
+			return
+		end
+		local unit = self:GetInspectUnit()
+		if unit and type(UnitName) == "function" and type(sender) == "string" and sender ~= "" then
+			local targetName = UnitName(unit)
+			if type(targetName) == "string" and targetName ~= "" then
+				if string.lower(targetName) ~= string.lower(sender) then
+					return
+				end
+			end
+		end
+		self:UpdateInspectTemplate()
 	end
 
 	function Talented:UpdateInspectTemplate()
@@ -4661,6 +4800,10 @@ do
 		if not unit then return end
 		local name = UnitName(unit)
 		if not name then return end
+		local level = tonumber(UnitLevel(unit)) or 0
+		if level < 10 then
+			return nil
+		end
 		local inspections = self.inspections or {}
 		self.inspections = inspections
 		local _, class = UnitClass(unit)
@@ -4668,15 +4811,35 @@ do
 		if not info then
 			return
 		end
+		local turtleSpec = GetTurtleInspectSpec()
+		local useTurtleInspect = HasTurtleInspectAPI()
+		if useTurtleInspect and type(turtleSpec) == "table" and type(turtleSpec.class) == "string" and turtleSpec.class ~= class then
+			return nil
+		end
 		local retval
 		for talentGroup = 1, GetNumTalentGroups(true) do
+			local hasInspectData
+			local ranksByTab = {}
 			local template_name = name .. " - " .. tostring(talentGroup)
+			for tab, tree in ipairs(info) do
+				ranksByTab[tab] = {}
+				for index = 1, table.getn(tree) do
+					local rank, fromInspect = GetInspectTalentRank(class, tab, index, talentGroup, useTurtleInspect)
+					if fromInspect then
+						hasInspectData = true
+					end
+					ranksByTab[tab][index] = rank or 0
+				end
+			end
+			if not hasInspectData then
+				return nil
+			end
 			local template = inspections[template_name]
-				if not template then
-					template = {
-						name = SafeFormat(L["Inspection of %s"], name) .. (talentGroup == GetActiveTalentGroup(true) and "" or L[" (alt)"]),
-						class = class
-					}
+			if not template then
+				template = {
+					name = SafeFormat(L["Inspection of %s"], name) .. (talentGroup == GetActiveTalentGroup(true) and "" or L[" (alt)"]),
+					class = class
+				}
 				for tab, tree in ipairs(info) do
 					template[tab] = {}
 				end
@@ -4684,10 +4847,13 @@ do
 			else
 				self:UnpackTemplate(template)
 			end
+			template.inspect_name = name
+			template.inspect_level = level
+			template.menu_name = string.format("%s - %d", tostring(name), level) .. (talentGroup == GetActiveTalentGroup(true) and "" or L[" (alt)"])
+			template.name = SafeFormat(L["Inspection of %s"], name) .. string.format(" (Level %d)", level) .. (talentGroup == GetActiveTalentGroup(true) and "" or L[" (alt)"])
 			for tab, tree in ipairs(info) do
 				for index = 1, table.getn(tree) do
-					local _, _, _, _, rank = GetTalentInfo(tab, index, true, nil, talentGroup)
-					template[tab][index] = rank or 0
+					template[tab][index] = ranksByTab[tab][index]
 				end
 			end
 			if not self:ValidateTemplate(template) then
@@ -4708,8 +4874,6 @@ do
 		end
 		return retval
 	end
-
-	Talented.INSPECT_TALENT_READY = Talented.UpdateInspectTemplate
 end
 
 -------------------------------------------------------------------------------
@@ -4781,7 +4945,7 @@ do
 		end
 	end
 
-	function Talented:UNIT_PET(_, unit)
+	function Talented:UNIT_PET(unit)
 		if unit == "player" then
 			self:PET_TALENT_UPDATE()
 		end

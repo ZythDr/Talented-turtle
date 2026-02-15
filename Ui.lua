@@ -1086,10 +1086,14 @@ do
 	end
 
 	local menuColorCodes = {}
+	local SHAMAN_COLOR_OVERRIDE = {r = 0.0, g = 0.44, b = 0.87}
 	local function fill_menuColorCodes()
 		for name, default in pairs(RAID_CLASS_COLORS) do
 			local color = CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[name] or default
-			menuColorCodes[name] = string.format("|cff%2x%2x%2x", color.r * 255, color.g * 255, color.b * 255)
+			if name == "SHAMAN" then
+				color = SHAMAN_COLOR_OVERRIDE
+			end
+			menuColorCodes[name] = string.format("|cff%02x%02x%02x", color.r * 255, color.g * 255, color.b * 255)
 		end
 	end
 	fill_menuColorCodes()
@@ -1678,25 +1682,25 @@ do
 			end
 		end
 
-		if not self.inspections then
-			self:GetNamedMenu("Inspected").disabled = true
-		else
-			self:GetNamedMenu("Inspected").disabled = nil
-			local menuList = self:GetNamedMenu("InspectedList")
-			local index = 1
-			for name, template in pairs(self.inspections) do
-				local entry = menuList[index]
-				if not entry then
-					entry = {}
-					menuList[index] = entry
+			if not self.inspections then
+				self:GetNamedMenu("Inspected").disabled = true
+			else
+				self:GetNamedMenu("Inspected").disabled = nil
+				local menuList = self:GetNamedMenu("InspectedList")
+				local index = 1
+				for name, template in pairs(self.inspections) do
+					local entry = menuList[index]
+					if not entry then
+						entry = {}
+						menuList[index] = entry
+					end
+					index = index + 1
+					update_template_entry(entry, template.menu_name or template.name or name, template)
+					entry.func = Menu_SetTemplate
+					entry.checked = (self.template == template)
+					entry.arg1 = template
+					entry.colorCode = menuColorCodes[template.class]
 				end
-				index = index + 1
-				update_template_entry(entry, name, template)
-				entry.func = Menu_SetTemplate
-				entry.checked = (self.template == template)
-				entry.arg1 = template
-				entry.colorCode = menuColorCodes[template.class]
-			end
 			table.sort(menuList, Sort_Template_Menu_Entry)
 		end
 		local talentGroup = GetActiveTalentGroup()
