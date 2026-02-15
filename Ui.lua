@@ -1102,6 +1102,23 @@ do
 		CUSTOM_CLASS_COLORS:RegisterCallback(fill_menuColorCodes)
 	end
 
+	local function ColorizeByClass(class, text)
+		local s = tostring(text or "")
+		local code = menuColorCodes[class]
+		if type(code) ~= "string" or code == "" then
+			return s
+		end
+		return code .. s .. "|r"
+	end
+
+	local function SortEntryText(entry)
+		local s = entry and (entry.sortKey or entry.text) or ""
+		s = tostring(s or "")
+		s = string.gsub(s, "|c%x%x%x%x%x%x%x%x", "")
+		s = string.gsub(s, "|r", "")
+		return s
+	end
+
 	local function BuildOrderedOptions()
 		local args = Talented.options and Talented.options.args and Talented.options.args.options and Talented.options.args.options.args
 		if type(args) ~= "table" then
@@ -1605,8 +1622,8 @@ do
 
 		for _, name in ipairs(list) do
 			entry = self:GetNamedMenu(name)
-			entry.text = classNames[name]
-			entry.colorCode = menuColorCodes[name]
+			entry.text = ColorizeByClass(name, classNames[name])
+			entry.colorCode = nil
 			entry.hasArrow = true
 			entry.menuList = self:GetNamedMenu(name .. "List")
 			menu[table.getn(menu) + 1] = entry
@@ -1627,7 +1644,7 @@ do
 	end
 
 	local function Sort_Template_Menu_Entry(a, b)
-		a, b = a.text, b.text
+		a, b = SortEntryText(a), SortEntryText(b)
 		if not a then
 			return false
 		end
@@ -1637,13 +1654,14 @@ do
 		return a < b
 	end
 
-	local function update_template_entry(entry, name, template)
+	local function update_template_entry(entry, name, template, class)
 		local points = template.points
 		if not points then
 			points = Talented:GetTemplateInfo(template)
 			template.points = points
 		end
-		entry.text = name .. points
+		entry.sortKey = tostring(name or "")
+		entry.text = ColorizeByClass(class, name) .. points
 	end
 
 	function Talented:MakeTemplateMenu()
@@ -1661,11 +1679,11 @@ do
 						menuList[index] = entry
 					end
 					index = index + 1
-					update_template_entry(entry, name, template)
+					update_template_entry(entry, name, template, class)
 					entry.func = Menu_SetTemplate
 					entry.checked = (self.template == template)
 					entry.arg1 = template
-					entry.colorCode = color
+					entry.colorCode = nil
 				end
 			end
 			for i = index, table.getn(menuList) do
@@ -1673,12 +1691,12 @@ do
 			end
 			table.sort(menuList, Sort_Template_Menu_Entry)
 			local mnu = self:GetNamedMenu(class)
-			mnu.text = classNames[class]
+			mnu.text = ColorizeByClass(class, classNames[class])
 			if index == 1 then
 				mnu.disabled = true
 			else
 				mnu.disabled = nil
-				mnu.colorCode = color
+				mnu.colorCode = nil
 			end
 		end
 
@@ -1695,11 +1713,11 @@ do
 						menuList[index] = entry
 					end
 					index = index + 1
-					update_template_entry(entry, template.menu_name or template.name or name, template)
+					update_template_entry(entry, template.menu_name or template.name or name, template, template.class)
 					entry.func = Menu_SetTemplate
 					entry.checked = (self.template == template)
 					entry.arg1 = template
-					entry.colorCode = menuColorCodes[template.class]
+					entry.colorCode = nil
 				end
 			table.sort(menuList, Sort_Template_Menu_Entry)
 		end
@@ -1863,8 +1881,9 @@ do
 
 		for _, name in ipairs(list) do
 			local s = {
-				text = classNames[name],
-				colorCode = menuColorCodes[name],
+				text = ColorizeByClass(name, classNames[name]),
+				colorCode = nil,
+				sortKey = classNames[name],
 				func = Menu_NewTemplate,
 				arg1 = name
 			}
@@ -2061,7 +2080,8 @@ do
 
 		for _, entry in ipairs(self:GetNamedMenu("NewTemplates")) do
 			local class = entry.arg1
-			entry.colorCode = menuColorCodes[class]
+			entry.text = ColorizeByClass(class, classNames[class])
+			entry.colorCode = nil
 		end
 
 		local exporters = self:GetNamedMenu("exporters")

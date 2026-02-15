@@ -4783,15 +4783,6 @@ do
 		if not string.find(message, TURTLE_INSPECT_DONE, 1, true) then
 			return
 		end
-		local unit = self:GetInspectUnit()
-		if unit and type(UnitName) == "function" and type(sender) == "string" and sender ~= "" then
-			local targetName = UnitName(unit)
-			if type(targetName) == "string" and targetName ~= "" then
-				if string.lower(targetName) ~= string.lower(sender) then
-					return
-				end
-			end
-		end
 		self:UpdateInspectTemplate()
 	end
 
@@ -4800,10 +4791,11 @@ do
 		if not unit then return end
 		local name = UnitName(unit)
 		if not name then return end
-		local level = tonumber(UnitLevel(unit)) or 0
-		if level < 10 then
+		local rawLevel = tonumber(UnitLevel(unit)) or 0
+		if rawLevel > 0 and rawLevel < 10 then
 			return nil
 		end
+		local level = rawLevel > 0 and rawLevel or nil
 		local inspections = self.inspections or {}
 		self.inspections = inspections
 		local _, class = UnitClass(unit)
@@ -4849,8 +4841,9 @@ do
 			end
 			template.inspect_name = name
 			template.inspect_level = level
-			template.menu_name = string.format("%s - %d", tostring(name), level) .. (talentGroup == GetActiveTalentGroup(true) and "" or L[" (alt)"])
-			template.name = SafeFormat(L["Inspection of %s"], name) .. string.format(" (Level %d)", level) .. (talentGroup == GetActiveTalentGroup(true) and "" or L[" (alt)"])
+			local levelText = level and tostring(level) or "?"
+			template.menu_name = string.format("%s - %s", tostring(name), levelText) .. (talentGroup == GetActiveTalentGroup(true) and "" or L[" (alt)"])
+			template.name = SafeFormat(L["Inspection of %s"], name) .. string.format(" (Level %s)", levelText) .. (talentGroup == GetActiveTalentGroup(true) and "" or L[" (alt)"])
 			for tab, tree in ipairs(info) do
 				for index = 1, table.getn(tree) do
 					template[tab][index] = ranksByTab[tab][index]
