@@ -1624,19 +1624,6 @@ do
 		if type(button) == "table" then
 			button.keepShownOnClick = nil
 		end
-		local clickButton = _G.arg1
-		if clickButton == "RightButton" and not template.talentGroup then
-			if type(button) == "table" then
-				-- Keep parent menu open on right-click without flipping selection state.
-				button.keepShownOnClick = 1
-				button.checked = not button.checked
-			end
-			if not Talented:OpenTemplateContextSubmenu(template) then
-				Talented:CloseMenu()
-				Talented:QueueTemplateContextMenu(template)
-			end
-			return
-		end
 		if IsShiftKeyDown() then
 			local frame = Talented:MakeAlternateView()
 			frame.view:SetTemplate(template)
@@ -1883,6 +1870,25 @@ do
 		return a < b
 	end
 
+	local function ResetMenuEntry(entry)
+		if type(entry) ~= "table" then
+			return
+		end
+		entry.disabled = nil
+		entry.separator = nil
+		entry.notCheckable = nil
+		entry.hasArrow = nil
+		entry.menuList = nil
+		entry.value = nil
+		entry.keepShownOnClick = nil
+		entry.checked = nil
+		entry.func = nil
+		entry.arg1 = nil
+		entry.arg2 = nil
+		entry.sortKey = nil
+		entry.isTitle = nil
+	end
+
 		local function update_template_entry(entry, name, template, class, forceClassColor)
 			local points = template.points
 			if not points then
@@ -1900,26 +1906,31 @@ do
 	function Talented:MakeTemplateMenu()
 		local menu = self:CreateTemplateMenu()
 
-			local templates = self:GetTemplatesDB()
-			for class, color in pairs(menuColorCodes) do
-				local menuList = self:GetNamedMenu(class .. "List")
-				local index = 1
-				for name, template in pairs(templates) do
-					if template.class == class then
+		local templates = self:GetTemplatesDB()
+		for class, color in pairs(menuColorCodes) do
+			local menuList = self:GetNamedMenu(class .. "List")
+			local index = 1
+			for name, template in pairs(templates) do
+				if template.class == class then
 					local entry = menuList[index]
 					if not entry then
 						entry = {}
 						menuList[index] = entry
 					end
+					ResetMenuEntry(entry)
 					index = index + 1
 					update_template_entry(entry, name, template, class)
 					entry.func = Menu_SetTemplate
 					entry.checked = (self.template == template)
 					entry.arg1 = template
 					entry.colorCode = nil
+					entry.notCheckable = nil
+					entry.hasArrow = nil
+					entry.menuList = nil
 				end
 			end
 			for i = index, table.getn(menuList) do
+				ResetMenuEntry(menuList[i])
 				menuList[i].text = nil
 			end
 			table.sort(menuList, Sort_Template_Menu_Entry)
@@ -1933,25 +1944,30 @@ do
 			end
 		end
 
-			if not self.inspections then
-				self:GetNamedMenu("Inspected").disabled = true
-			else
-				self:GetNamedMenu("Inspected").disabled = nil
-				local menuList = self:GetNamedMenu("InspectedList")
-				local index = 1
-				for name, template in pairs(self.inspections) do
-					local entry = menuList[index]
-					if not entry then
-						entry = {}
-						menuList[index] = entry
-					end
-					index = index + 1
-					update_template_entry(entry, template.menu_name or template.name or name, template, template.class, true)
-					entry.func = Menu_SetTemplate
-					entry.checked = (self.template == template)
-					entry.arg1 = template
-					entry.colorCode = nil
+		if not self.inspections then
+			self:GetNamedMenu("Inspected").disabled = true
+		else
+			self:GetNamedMenu("Inspected").disabled = nil
+			local menuList = self:GetNamedMenu("InspectedList")
+			local index = 1
+			for name, template in pairs(self.inspections) do
+				local entry = menuList[index]
+				if not entry then
+					entry = {}
+					menuList[index] = entry
 				end
+				ResetMenuEntry(entry)
+				index = index + 1
+				update_template_entry(entry, template.menu_name or template.name or name, template, template.class, true)
+				entry.func = Menu_SetTemplate
+				entry.checked = (self.template == template)
+				entry.arg1 = template
+				entry.colorCode = nil
+			end
+			for i = index, table.getn(menuList) do
+				ResetMenuEntry(menuList[i])
+				menuList[i].text = nil
+			end
 			table.sort(menuList, Sort_Template_Menu_Entry)
 		end
 		local talentGroup = GetActiveTalentGroup()
@@ -2509,12 +2525,36 @@ do
 			return nil
 		end
 		local level = tonumber(UIDROPDOWNMENU_MENU_LEVEL) or 1
+		if level < 1 then
+			level = 1
+		end
+		local submenuLevel = level + 1
+		local maxLevels = tonumber(UIDROPDOWNMENU_MAXLEVELS) or 2
+		if submenuLevel > maxLevels then
+			-- Vanilla dropdown depth is often limited to 2. Reuse current level
+			-- so template context actions can still open without closing parent.
+			submenuLevel = level
+		end
 		local button = _G.this
 		if type(button) ~= "table" then
 			return nil
 		end
+		if type(_G["DropDownList" .. tostring(submenuLevel)]) ~= "table" then
+			if submenuLevel ~= level and type(_G["DropDownList" .. tostring(level)]) == "table" then
+				submenuLevel = level
+			else
+				return nil
+			end
+		end
+		local openMenu = _G.UIDROPDOWNMENU_OPEN_MENU
+		if not openMenu then
+			return nil
+		end
 		button.value = menu
-		ToggleDropDownMenu(level + 1, menu)
+		local ok = pcall(ToggleDropDownMenu, submenuLevel, menu, openMenu, button, 0, 0)
+		if not ok then
+			return nil
+		end
 		return true
 	end
 

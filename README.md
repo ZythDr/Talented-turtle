@@ -11,6 +11,10 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 
 ## Recent Changes
 
+- Standardized versioning to short `v1.x` format for this hard-forked Turtle branch.
+- Improved Escape handling reliability (Talented frame and Talented dialogs now close consistently via `CloseSpecialWindows` flow).
+- Fixed modified-click talent linking behavior when chat edit box is not active (no unintended URL popup).
+- Restored Templates menu to selection-only workflow; template deletion remains via `Actions -> Delete template`.
 - Reworked talent chat hyperlink handling for Turtle WoW compatibility:
   - native `talent:` transport for non-SuperWoW clickers
   - Talented-side enhanced tooltip handling when available

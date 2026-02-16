@@ -2299,8 +2299,47 @@ do
 		end
 	end
 
+	function Talented:HookCloseSpecialWindows()
+		if type(_G.CloseSpecialWindows) ~= "function" then
+			return
+		end
+		if not self._talentedCloseSpecialWindowsOriginal then
+			self._talentedCloseSpecialWindowsOriginal = _G.CloseSpecialWindows
+		end
+		if not self._talentedCloseSpecialWindowsProxy then
+			self._talentedCloseSpecialWindowsProxy = function(a1, a2, a3, a4, a5, a6, a7, a8, a9)
+				local urlDialog = _G.TalentedURLDialog
+				if urlDialog and urlDialog.IsShown and urlDialog:IsShown() then
+					urlDialog:Hide()
+					return 1
+				end
+				local importDialog = _G.TalentedImportURLDialog
+				if importDialog and importDialog.IsShown and importDialog:IsShown() then
+					importDialog:Hide()
+					return 1
+				end
+				if Talented and Talented.base and Talented.base.IsShown and Talented.base:IsShown() then
+					if type(HideUIPanel) == "function" then
+						pcall(HideUIPanel, Talented.base)
+					else
+						Talented.base:Hide()
+					end
+					return 1
+				end
+				local original = Talented and Talented._talentedCloseSpecialWindowsOriginal
+				if type(original) == "function" then
+					return original(a1, a2, a3, a4, a5, a6, a7, a8, a9)
+				end
+			end
+		end
+		if _G.CloseSpecialWindows ~= self._talentedCloseSpecialWindowsProxy then
+			_G.CloseSpecialWindows = self._talentedCloseSpecialWindowsProxy
+		end
+	end
+
 	function Talented:OnEnable()
 		self:HookTalentFrameToggle()
+		self:HookCloseSpecialWindows()
 		self:HookSetItemRef()
 		self:HookChatHyperlinkShow()
 		self:SecureHook("UpdateMicroButtons")
@@ -2314,6 +2353,9 @@ do
 
 	function Talented:OnDisable()
 		self:UnhookInspectUI()
+		if _G.CloseSpecialWindows == self._talentedCloseSpecialWindowsProxy and type(self._talentedCloseSpecialWindowsOriginal) == "function" then
+			_G.CloseSpecialWindows = self._talentedCloseSpecialWindowsOriginal
+		end
 		if _G.SetItemRef == self._talentedSetItemRefProxy and type(self._talentedSetItemRefOriginal) == "function" then
 			_G.SetItemRef = self._talentedSetItemRefOriginal
 		end
@@ -2324,6 +2366,7 @@ do
 
 	function Talented:PLAYER_ENTERING_WORLD()
 		self:HookTalentFrameToggle()
+		self:HookCloseSpecialWindows()
 		local E = ElvUI and unpack(ElvUI)
 		if E then
 			-- spec tabs
@@ -4850,10 +4893,11 @@ do
 			local rank = self.template and self.template[tab] and self.template[tab][index]
 			local link = Talented:GetTalentLink(self.template, tab, index, rank)
 			if link then
-				if not TryInsertLinkInChat(link) then
-					Talented:ShowInDialog(link)
-				end
+				-- Vanilla behavior: modified-click inserts into an active chat
+				-- edit box only. If chat is not active, do nothing.
+				TryInsertLinkInChat(link)
 			end
+			return
 		else
 			self:UpdateTalent(tab, index, button == "LeftButton" and 1 or -1)
 		end
@@ -5278,6 +5322,12 @@ do
 		frame:SetScript("OnDragStop", function(self)
 			self:StopMovingOrSizing()
 		end)
+		frame:SetScript("OnHide", function(self)
+			local editBox = self and self.editBox
+			if editBox and type(editBox.ClearFocus) == "function" then
+				editBox:ClearFocus()
+			end
+		end)
 		SetSizeCompat(frame, 420, 120)
 		frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 		frame:SetBackdrop({
@@ -5300,6 +5350,9 @@ do
 		edit:SetAutoFocus(false)
 		edit:SetScript("OnEscapePressed", function(self)
 			local widget = self or _G.this
+			if widget and widget.ClearFocus then
+				widget:ClearFocus()
+			end
 			local parent = widget and widget.GetParent and widget:GetParent()
 			if parent and parent.Hide then
 				parent:Hide()
@@ -5320,6 +5373,10 @@ do
 		okay:SetScript("OnClick", function(self)
 			local widget = self or _G.this
 			local parent = widget and widget.GetParent and widget:GetParent()
+			local editBox = parent and parent.editBox
+			if editBox and type(editBox.ClearFocus) == "function" then
+				editBox:ClearFocus()
+			end
 			if parent and parent.Hide then
 				parent:Hide()
 			end
