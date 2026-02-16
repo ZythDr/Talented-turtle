@@ -2,7 +2,7 @@
 ## Title: Talented
 ## Notes: The Talent Template Editor (Vanilla/Turtle). Requires SuperWoW + nampower.
 ## Author: Jerry (Kader Edition)
-## Version: v2.4.8-vanilla-ace2-r20260215-16
+## Version: v2.4.9-vanilla-ace2-r20260216-01
 ## SavedVariables: TalentedDB
 ## X-Category: Interface Enhancements
 Ace2\AceLibrary\AceLibrary.lua

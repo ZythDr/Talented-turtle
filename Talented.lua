@@ -1002,6 +1002,11 @@ do
 		return global.templates
 	end
 
+	function Talented:InvalidateSpellLookupCache()
+		self._spellToTalentMap = nil
+		self._spellToTalentMapBuilt = nil
+	end
+
 	function Talented:ApplyDataOverrides(override, source)
 		if type(override) ~= "table" then
 			return false
@@ -1030,6 +1035,7 @@ do
 			end
 		end
 		if classCount > 0 then
+			self:InvalidateSpellLookupCache()
 			self._liveTalentDataBuilt = self._liveTalentDataBuilt or {}
 			local global = self:GetGlobalDB()
 			if type(global) == "table" then
@@ -1704,7 +1710,10 @@ do
 			end
 		end
 		if type(resolved) == "number" then
-			talent.ranks[rank] = resolved
+			if talent.ranks[rank] ~= resolved then
+				talent.ranks[rank] = resolved
+				self:InvalidateSpellLookupCache()
+			end
 			return resolved
 		end
 		return nil
@@ -2292,6 +2301,8 @@ do
 
 	function Talented:OnEnable()
 		self:HookTalentFrameToggle()
+		self:HookSetItemRef()
+		self:HookChatHyperlinkShow()
 		self:SecureHook("UpdateMicroButtons")
 		self:CheckHookInspectUI()
 
@@ -2303,6 +2314,12 @@ do
 
 	function Talented:OnDisable()
 		self:UnhookInspectUI()
+		if _G.SetItemRef == self._talentedSetItemRefProxy and type(self._talentedSetItemRefOriginal) == "function" then
+			_G.SetItemRef = self._talentedSetItemRefOriginal
+		end
+		if _G.ChatFrame_OnHyperlinkShow == self._talentedChatHyperlinkProxy and type(self._talentedChatHyperlinkOriginal) == "function" then
+			_G.ChatFrame_OnHyperlinkShow = self._talentedChatHyperlinkOriginal
+		end
 	end
 
 	function Talented:PLAYER_ENTERING_WORLD()
@@ -2634,6 +2651,9 @@ do
 		local copy = DeepCopy(sdata)
 		copy.__source = "runtime_override"
 		self.spelldata[class] = copy
+		if type(self.InvalidateSpellLookupCache) == "function" then
+			self:InvalidateSpellLookupCache()
+		end
 		local tdata = overrideRoot.tabdata and overrideRoot.tabdata[class]
 		if type(tdata) == "table" then
 			self.tabdata[class] = DeepCopy(tdata)
@@ -2721,6 +2741,9 @@ do
 		end
 		data.__source = "live"
 		self.spelldata[class] = data
+		if type(self.InvalidateSpellLookupCache) == "function" then
+			self:InvalidateSpellLookupCache()
+		end
 		self._liveTalentDataBuilt = self._liveTalentDataBuilt or {}
 		self._liveTalentDataBuilt[class] = true
 		return data
@@ -2791,6 +2814,7 @@ do
 		data = handle_tabs(data)
 		data.__source = "embedded"
 		self.spelldata[class] = data
+		self:InvalidateSpellLookupCache()
 		if ENABLE_STRICT_SPELLDATA_CHECK and class == playerClass then
 			self:CheckSpellData(class)
 		end
@@ -2799,20 +2823,68 @@ do
 
 	local spellTooltip
 	local spellLinkTooltip
+	local function GetTooltipLineText(fs)
+		if not fs then
+			return nil
+		end
+		if type(fs.IsVisible) == "function" and not fs:IsVisible() then
+			return nil
+		end
+		if type(fs.GetText) ~= "function" then
+			return nil
+		end
+		local text = fs:GetText()
+		if type(text) ~= "string" or text == "" then
+			return nil
+		end
+		return text
+	end
+
+	local function TooltipDataHasPlaceholders(data)
+		if type(data) == "string" then
+			return string.find(data, "%$", 1, true) ~= nil
+		end
+		if type(data) ~= "table" then
+			return false
+		end
+		for i = 1, table.getn(data) do
+			local line = data[i]
+			if type(line) == "string" then
+				if string.find(line, "%$", 1, true) then
+					return true
+				end
+			elseif type(line) == "table" then
+				local left = line.left
+				local right = line.right
+				if type(left) == "string" and string.find(left, "%$", 1, true) then
+					return true
+				end
+				if type(right) == "string" and string.find(right, "%$", 1, true) then
+					return true
+				end
+			end
+		end
+		return false
+	end
+
 	local function ParseSpellTooltip(tt)
 		local lines = tt:NumLines()
 		if not lines or lines < 2 then
 			return ""
 		end
 		local value
-		if lines == 2 and not tt.rights[2]:GetText() then
-			value = tt.lefts[2]:GetText()
+		local right2 = GetTooltipLineText(tt.rights and tt.rights[2])
+		local left2 = GetTooltipLineText(tt.lefts and tt.lefts[2])
+		if lines == 2 and not right2 then
+			value = left2 or ""
 		else
 			value = {}
 			for i = 2, lines do
+				local left = GetTooltipLineText(tt.lefts and tt.lefts[i])
+				local right = GetTooltipLineText(tt.rights and tt.rights[i])
 				value[i - 1] = {
-					left = tt.lefts[i]:GetText(),
-					right = tt.rights[i]:GetText()
+					left = left,
+					right = right
 				}
 			end
 		end
@@ -3001,21 +3073,26 @@ do
 			end
 			local talent = self:UncompressSpellData(class)[tab][index]
 			local spell = self:GetTalentSpellID(class, tab, index, rank)
+			local linkDesc
 			if spell and self.spellLinkDescCache then
-				local linkDesc = self.spellLinkDescCache[spell]
-				if linkDesc and linkDesc ~= "" then
+				linkDesc = self.spellLinkDescCache[spell]
+				if linkDesc and linkDesc ~= "" and not TooltipDataHasPlaceholders(linkDesc) then
 					return linkDesc
 				end
+			end
+			local desc = spell and self.spellDescCache[spell]
+			if desc and desc ~= "" and not TooltipDataHasPlaceholders(desc) then
+				return desc
 			end
 			local recDesc = GetSpellRecDescription(spell)
 			if recDesc and recDesc ~= "" then
 				return recDesc
 			end
-			local desc = spell and self.spellDescCache[spell]
 			if desc and desc ~= "" then
-				if not string.find(desc, "%$", 1, true) then
-					return desc
-				end
+				return desc
+			end
+			if linkDesc and linkDesc ~= "" then
+				return linkDesc
 			end
 			local webDesc = GetWebDataTalentDesc(class, tab, index, rank)
 			if webDesc then
@@ -3103,22 +3180,545 @@ do
 		return spell
 	end
 
-	function Talented:GetTalentLink(template, tab, index, rank)
-		rank = rank or (template[tab] and template[tab][index])
-		if not rank or rank == 0 then
-			rank = 1
+		local CUSTOM_TALENT_LINK_TREE_BASE = 900
+		local CUSTOM_TALENT_LINK_TAB_SCALE = 10000
+		local CUSTOM_TALENT_LINK_INDEX_SCALE = 100
+
+		function Talented:EnsureCustomTalentLinkMaps()
+			if type(self._customTalentClassToId) == "table" and type(self._customTalentIdToClass) == "table" then
+				return
+			end
+			local classToId = {}
+			local idToClass = {}
+			local order = STATUS_CLASS_ORDER or {}
+			for i, class in ipairs(order) do
+				if type(class) == "string" then
+					classToId[class] = i
+					idToClass[i] = class
+				end
+			end
+			self._customTalentClassToId = classToId
+			self._customTalentIdToClass = idToClass
 		end
-		local _, playerClass = UnitClass("player")
-		local spell = self:GetTalentSpellID(template.class, tab, index, rank)
-		if type(spell) == "number" and CompatGetSpellInfo(spell) then
-			return SafeFormat("|cff71d5ff|Hspell:%d|h[%s]|h|r", spell, self:GetTalentName(template.class, tab, index))
+
+		function Talented:EncodeCustomTalentLink(class, tab, index, rank)
+			self:EnsureCustomTalentLinkMaps()
+			local classId = self._customTalentClassToId and self._customTalentClassToId[class]
+			tab = tonumber(tab)
+			index = tonumber(index)
+			rank = tonumber(rank) or 1
+			if not classId or not tab or not index then
+				return nil
+			end
+			if tab < 1 or index < 1 then
+				return nil
+			end
+			if rank < 1 then
+				rank = 1
+			end
+			local tree = CUSTOM_TALENT_LINK_TREE_BASE + classId
+			local packedIndex = tab * CUSTOM_TALENT_LINK_TAB_SCALE + index * CUSTOM_TALENT_LINK_INDEX_SCALE + rank
+			return tree, packedIndex
 		end
-		if template.class == playerClass and self._liveTalentDataBuilt and self._liveTalentDataBuilt[playerClass] then
-			return SafeFormat("|cff71d5ff[%s]|r", self:GetTalentName(template.class, tab, index))
+
+		function Talented:DecodeCustomTalentLink(tree, packedIndex)
+			self:EnsureCustomTalentLinkMaps()
+			tree = tonumber(tree)
+			packedIndex = tonumber(packedIndex)
+			if not tree or not packedIndex then
+				return nil
+			end
+			local classId = tree - CUSTOM_TALENT_LINK_TREE_BASE
+			if classId < 1 then
+				return nil
+			end
+			local class = self._customTalentIdToClass and self._customTalentIdToClass[classId]
+			if not class then
+				return nil
+			end
+			local tab = math.floor(packedIndex / CUSTOM_TALENT_LINK_TAB_SCALE)
+			local remainder = packedIndex - (tab * CUSTOM_TALENT_LINK_TAB_SCALE)
+			local index = math.floor(remainder / CUSTOM_TALENT_LINK_INDEX_SCALE)
+			local rank = remainder - (index * CUSTOM_TALENT_LINK_INDEX_SCALE)
+			if tab < 1 or index < 1 then
+				return nil
+			end
+			if rank < 1 then
+				rank = 1
+			end
+			return class, tab, index, rank
 		end
-		return SafeFormat("|cff71d5ff[%s]|r", self:GetTalentName(template.class, tab, index))
+
+		local function ParseNativeTalentHyperlink(link)
+			if type(link) ~= "string" then
+				return nil
+			end
+			local tree, index = string.match(link, "^talent:(%d+):(%d+):")
+			if not tree then
+				tree, index = string.match(link, "^talent:(%d+):(%d+)$")
+			end
+			tree = tonumber(tree)
+			index = tonumber(index)
+			if not tree or not index then
+				return nil
+			end
+			return tree, index
+		end
+
+		function Talented:BuildTalentLinkSlots()
+			local slots = self._talentLinkSlots
+			if type(slots) == "table" and table.getn(slots) > 0 then
+				return slots
+			end
+			slots = {}
+			local numTabs = tonumber(type(_G.GetNumTalentTabs) == "function" and _G.GetNumTalentTabs() or 0) or 0
+			if numTabs < 1 then
+				numTabs = 3
+			end
+			for tab = 1, numTabs do
+				local numTalents = tonumber(type(_G.GetNumTalents) == "function" and _G.GetNumTalents(tab) or 0) or 0
+				if numTalents < 1 then
+					numTalents = 1
+				end
+				for index = 1, numTalents do
+					slots[table.getn(slots) + 1] = {tab = tab, index = index}
+				end
+			end
+			self._talentLinkSlots = slots
+			self._talentLinkSlotByPayload = self._talentLinkSlotByPayload or {}
+			self._talentLinkPayloadBySlot = self._talentLinkPayloadBySlot or {}
+			self._talentLinkNextSlot = self._talentLinkNextSlot or 1
+			return slots
+		end
+
+		function Talented:AllocateTalentLinkSlot(class, tab, index, rank)
+			class = type(class) == "string" and string.upper(class) or nil
+			tab = tonumber(tab)
+			index = tonumber(index)
+			rank = tonumber(rank) or 1
+			if not class or not tab or not index then
+				return nil
+			end
+			if rank < 1 then
+				rank = 1
+			end
+			local slots = self:BuildTalentLinkSlots()
+			local slotCount = table.getn(slots)
+			if slotCount < 1 then
+				return nil
+			end
+			local payloadKey = SafeFormat("%s:%d:%d:%d", class, tab, index, rank)
+			local slotByPayload = self._talentLinkSlotByPayload or {}
+			local payloadBySlot = self._talentLinkPayloadBySlot or {}
+			local slotId = slotByPayload[payloadKey]
+			if not slotId or not slots[slotId] then
+				slotId = tonumber(self._talentLinkNextSlot) or 1
+				if slotId < 1 or slotId > slotCount then
+					slotId = 1
+				end
+				local previous = payloadBySlot[slotId]
+				if type(previous) == "table" and previous.key then
+					slotByPayload[previous.key] = nil
+				end
+				slotByPayload[payloadKey] = slotId
+				payloadBySlot[slotId] = {key = payloadKey, class = class, tab = tab, index = index, rank = rank}
+				slotId = slotId + 1
+				if slotId > slotCount then
+					slotId = 1
+				end
+				self._talentLinkNextSlot = slotId
+			end
+			self._talentLinkSlotByPayload = slotByPayload
+			self._talentLinkPayloadBySlot = payloadBySlot
+			local slot = slots[slotByPayload[payloadKey]]
+			if not slot then
+				return nil
+			end
+			return slot.tab, slot.index
+		end
+
+		function Talented:ResolveTalentLinkSlot(tree, index)
+			tree = tonumber(tree)
+			index = tonumber(index)
+			if not tree or not index then
+				return nil
+			end
+			local slots = self:BuildTalentLinkSlots()
+			local payloadBySlot = self._talentLinkPayloadBySlot
+			if type(slots) ~= "table" or type(payloadBySlot) ~= "table" then
+				return nil
+			end
+			for slotId = 1, table.getn(slots) do
+				local slot = slots[slotId]
+				if slot and slot.tab == tree and slot.index == index then
+					local payload = payloadBySlot[slotId]
+					if type(payload) == "table" then
+						return payload.class, payload.tab, payload.index, payload.rank
+					end
+					return nil
+				end
+			end
+			return nil
+		end
+
+		function Talented:GetTalentLink(template, tab, index, rank)
+			if type(template) ~= "table" or type(template.class) ~= "string" then
+				return nil
+			end
+			tab = tonumber(tab)
+			index = tonumber(index)
+			if not tab or not index then
+				return nil
+			end
+			rank = tonumber(rank or (template[tab] and template[tab][index])) or 1
+			if rank < 1 then
+				rank = 1
+			end
+			local name = self:GetTalentName(template.class, tab, index)
+			local sender = UnitName("player")
+			local linkTab, linkIndex = self:AllocateTalentLinkSlot(template.class, tab, index, rank)
+			if linkTab and linkIndex and sender and sender ~= "" then
+				return SafeFormat("|cFF71D5FF|Htalent:%d:%d:%s:|h[%s]|h|r", linkTab, linkIndex, sender, name)
+			end
+
+			local spell = self:GetTalentSpellID(template.class, tab, index, rank)
+			if type(spell) == "number" and spell > 0 then
+				return SafeFormat("|cFF71D5FF|Henchant:%d|h[%s]|h|r", spell, name)
+			end
+			return SafeFormat("|cFF71D5FF|Htalented:%s:%d:%d:%d|h[%s]|h|r", string.upper(template.class), tab, index, rank, name)
+		end
+
+		function Talented:BuildSpellToTalentMap()
+			if self._spellToTalentMapBuilt and type(self._spellToTalentMap) == "table" then
+				return self._spellToTalentMap
+			end
+			local map = {}
+			local classOrder = STATUS_CLASS_ORDER
+			local function ScanClass(class)
+				if type(class) == "string" and type((self.spelldata or {})[class]) ~= "nil" then
+					local trees = self:UncompressSpellData(class)
+					if type(trees) == "table" then
+						for tab, tree in ipairs(trees) do
+							for index, talent in ipairs(tree) do
+								local ranks = talent and talent.ranks
+								local maxRank = type(ranks) == "table" and table.getn(ranks) or 0
+								for rank = 1, maxRank do
+									local spell = self:GetTalentSpellID(class, tab, index, rank)
+									if type(spell) == "number" and spell > 0 and not map[spell] then
+										map[spell] = {class = class, tab = tab, index = index, rank = rank}
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+			if type(classOrder) == "table" then
+				for _, class in ipairs(classOrder) do
+					ScanClass(class)
+				end
+			else
+				for class, _ in pairs(self.spelldata or {}) do
+					ScanClass(class)
+				end
+			end
+			self._spellToTalentMap = map
+			self._spellToTalentMapBuilt = true
+			return map
+		end
+
+		function Talented:GetTalentBySpellID(spellId)
+			spellId = tonumber(spellId)
+			if not spellId or spellId <= 0 then
+				return nil
+			end
+			local map = self:BuildSpellToTalentMap()
+			local talent = map and map[spellId]
+			if talent then
+				return talent
+			end
+			self:InvalidateSpellLookupCache()
+			map = self:BuildSpellToTalentMap()
+			return map and map[spellId]
+		end
+
+		function Talented:ShowTalentTooltip(class, tab, index, rank)
+			if type(class) ~= "string" then
+				return false
+			end
+			tab = tonumber(tab)
+			index = tonumber(index)
+			rank = tonumber(rank) or 1
+			if not tab or not index then
+				return false
+			end
+			local data = self:UncompressSpellData(class)
+			if type(data) ~= "table" or type(data[tab]) ~= "table" or type(data[tab][index]) ~= "table" then
+				return false
+			end
+			if rank < 1 then
+				rank = 1
+			end
+			local maxRank = self:GetTalentRanks(class, tab, index) or 1
+			if rank > maxRank then
+				rank = maxRank
+			end
+
+			local tooltip = _G.ItemRefTooltip or _G.GameTooltip
+			if not tooltip then
+				return false
+			end
+			if tooltip.SetOwner then
+				pcall(tooltip.SetOwner, tooltip, UIParent, "ANCHOR_PRESERVE")
+			end
+			if tooltip.ClearLines then
+				tooltip:ClearLines()
+			end
+
+			local function AddTipText(desc)
+				if type(desc) == "string" then
+					if desc ~= "" then
+						tooltip:AddLine(desc, NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b, true)
+					end
+					return
+				end
+				if type(desc) ~= "table" then
+					return
+				end
+					local n = table.getn(desc)
+					for i = 1, n do
+						local line = desc[i]
+						local color = (i == n) and NORMAL_FONT_COLOR or HIGHLIGHT_FONT_COLOR
+						if type(line) == "table" then
+							local left, right = line.left, line.right
+							if type(left) == "string" and left == "" then
+								left = nil
+							end
+							if type(right) == "string" and right == "" then
+								right = nil
+							end
+							if left and right then
+								tooltip:AddDoubleLine(left, right, color.r, color.g, color.b, color.r, color.g, color.b)
+							elseif left then
+								tooltip:AddLine(left, color.r, color.g, color.b, true)
+							elseif right then
+								tooltip:AddLine(right, color.r, color.g, color.b, true)
+							end
+						elseif type(line) == "string" then
+						tooltip:AddLine(line, color.r, color.g, color.b, true)
+					end
+				end
+			end
+
+			tooltip:AddLine(self:GetTalentName(class, tab, index), HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b)
+			tooltip:AddLine(SafeFormat(TOOLTIP_TALENT_RANK or "Rank %d/%d", rank, maxRank), HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b)
+			AddTipText(self:GetTalentDesc(class, tab, index, rank, false))
+
+			if tooltip.Show then
+				tooltip:Show()
+			end
+			return true
+		end
+
+		function Talented:BuildTalentTooltipLines(class, tab, index, rank)
+			if type(class) ~= "string" then
+				return nil
+			end
+			tab = tonumber(tab)
+			index = tonumber(index)
+			rank = tonumber(rank) or 1
+			if not tab or not index then
+				return nil
+			end
+			local data = self:UncompressSpellData(class)
+			if type(data) ~= "table" or type(data[tab]) ~= "table" or type(data[tab][index]) ~= "table" then
+				return nil
+			end
+			if rank < 1 then
+				rank = 1
+			end
+			local maxRank = self:GetTalentRanks(class, tab, index) or 1
+			if maxRank < 1 then
+				return nil
+			end
+			if rank > maxRank then
+				rank = maxRank
+			end
+
+			local lines = {}
+			local function AddLine(left, right)
+				lines[table.getn(lines) + 1] = {left = left, right = right}
+			end
+			local function AddDesc(desc)
+				if type(desc) == "string" then
+					if desc ~= "" then
+						AddLine(desc)
+					end
+					return
+				end
+				if type(desc) ~= "table" then
+					return
+				end
+				for i = 1, table.getn(desc) do
+					local line = desc[i]
+					if type(line) == "table" then
+						local left, right = line.left, line.right
+						if (left and left ~= "") or (right and right ~= "") then
+							AddLine(left, right)
+						end
+					elseif type(line) == "string" and line ~= "" then
+						AddLine(line)
+					end
+				end
+			end
+
+			AddLine(self:GetTalentName(class, tab, index))
+			AddLine(SafeFormat(TOOLTIP_TALENT_RANK or "Rank %d/%d", rank, maxRank))
+			AddDesc(self:GetTalentDesc(class, tab, index, rank, false))
+			return lines
+		end
+
+		local function ParseTalentedHyperlink(link)
+			if type(link) ~= "string" then
+				return nil
+			end
+			local class, tab, index, rank = string.match(link, "^talented:([^:]+):(%d+):(%d+):(%d+)$")
+			if not class then
+				class, tab, index = string.match(link, "^talented:([^:]+):(%d+):(%d+)$")
+			end
+			class = class and string.upper(class)
+			tab = tonumber(tab)
+			index = tonumber(index)
+			rank = tonumber(rank) or 1
+			if not class or not tab or not index then
+				return nil
+			end
+			if rank < 1 then
+				rank = 1
+			end
+			return class, tab, index, rank
+		end
+
+		function Talented:ShowCustomTalentHyperlink(link)
+			local tree, packedIndex = ParseNativeTalentHyperlink(link)
+			if not tree then
+				return false
+			end
+			local class, tab, index, rank = self:DecodeCustomTalentLink(tree, packedIndex)
+			if not class then
+				class, tab, index, rank = self:ResolveTalentLinkSlot(tree, packedIndex)
+			end
+			if not class then
+				return false
+			end
+			return self:ShowTalentTooltip(class, tab, index, rank)
+		end
+
+		function Talented:ShowTalentedHyperlink(link)
+			local class, tab, index, rank = ParseTalentedHyperlink(link)
+			if not class then
+				return false
+			end
+			return self:ShowTalentTooltip(class, tab, index, rank)
+		end
+
+		function Talented:HandleSetItemRef(link, text, button)
+			if type(link) ~= "string" then
+				return false
+			end
+			if string.sub(link, 1, 7) == "talent:" then
+				return self:ShowCustomTalentHyperlink(link)
+			end
+			if string.sub(link, 1, 9) == "talented:" then
+				return self:ShowTalentedHyperlink(link)
+			end
+			local spellId = tonumber(string.match(link, "^enchant:(%d+)"))
+			if spellId then
+				local talent = self:GetTalentBySpellID(spellId)
+				if talent then
+					return self:ShowTalentTooltip(talent.class, talent.tab, talent.index, talent.rank)
+				end
+			end
+			return false
+		end
+
+		function Talented:HookSetItemRef()
+			if self._talentedSetItemRefProxy then
+				return
+			end
+			self._talentedSetItemRefOriginal = _G.SetItemRef
+			self._talentedSetItemRefProxy = function(link, text, button, a4, a5, a6, a7, a8)
+				local handled
+				if Talented then
+					local ok, result = pcall(Talented.HandleSetItemRef, Talented, link, text, button)
+					handled = ok and result
+				end
+				if handled then
+					return
+				end
+				local original = Talented and Talented._talentedSetItemRefOriginal
+				if type(original) == "function" then
+					return original(link, text, button, a4, a5, a6, a7, a8)
+				end
+			end
+			_G.SetItemRef = self._talentedSetItemRefProxy
+		end
+
+		function Talented:HandleChatHyperlink(link, text, button)
+			if type(link) ~= "string" then
+				return false
+			end
+			if string.sub(link, 1, 7) == "talent:" then
+				if IsShiftKeyDown() and ChatFrameEditBox and ChatFrameEditBox:IsVisible() then
+					ChatFrameEditBox:Insert(text or "")
+					return true
+				end
+				return self:ShowCustomTalentHyperlink(link)
+			end
+			if string.sub(link, 1, 9) == "talented:" then
+				if IsShiftKeyDown() and ChatFrameEditBox and ChatFrameEditBox:IsVisible() then
+					ChatFrameEditBox:Insert(text or "")
+					return true
+				end
+				return self:ShowTalentedHyperlink(link)
+			end
+			local spellId = tonumber(string.match(link, "^enchant:(%d+)"))
+			if spellId then
+				local talent = self:GetTalentBySpellID(spellId)
+				if talent then
+					if IsShiftKeyDown() and ChatFrameEditBox and ChatFrameEditBox:IsVisible() then
+						ChatFrameEditBox:Insert(text or "")
+						return true
+					end
+					return self:ShowTalentTooltip(talent.class, talent.tab, talent.index, talent.rank)
+				end
+			end
+			return false
+		end
+
+		function Talented:HookChatHyperlinkShow()
+			local current = _G.ChatFrame_OnHyperlinkShow
+			if current == self._talentedChatHyperlinkProxy then
+				return
+			end
+			self._talentedChatHyperlinkOriginal = current
+			self._talentedChatHyperlinkProxy = function(link, text, button, a4, a5, a6, a7, a8)
+				local handled = false
+				if Talented and type(Talented.HandleChatHyperlink) == "function" then
+					local ok, result = pcall(Talented.HandleChatHyperlink, Talented, link, text, button)
+					handled = ok and result
+				end
+				if handled then
+					return
+				end
+				local original = Talented and Talented._talentedChatHyperlinkOriginal
+				if type(original) == "function" then
+					return original(link, text, button, a4, a5, a6, a7, a8)
+				end
+			end
+			_G.ChatFrame_OnHyperlinkShow = self._talentedChatHyperlinkProxy
+		end
 	end
-end
 
 -------------------------------------------------------------------------------
 -- check.lua
@@ -4214,18 +4814,18 @@ do
 		if not edit then
 			return false
 		end
-		if type(_G.ChatEdit_InsertLink) == "function" then
-			local ok, inserted = pcall(_G.ChatEdit_InsertLink, link)
-			if ok and inserted ~= false then
-				return true
-			end
-		end
 		if type(edit.Insert) == "function" then
 			local ok = pcall(edit.Insert, edit, link)
 			if ok then
 				if type(edit.SetFocus) == "function" then
 					pcall(edit.SetFocus, edit)
 				end
+				return true
+			end
+		end
+		if type(_G.ChatEdit_InsertLink) == "function" then
+			local ok, inserted = pcall(_G.ChatEdit_InsertLink, link)
+			if ok and inserted ~= false then
 				return true
 			end
 		end
@@ -4247,11 +4847,8 @@ do
 
 	function TalentView:OnTalentClick(button, tab, index)
 		if IsChatLinkModifiedClick() then
-			local _, playerClass = UnitClass("player")
-			if self.template and self.template.class == playerClass and TryInsertNativeTalentLink(tab, index) then
-				return
-			end
-			local link = Talented:GetTalentLink(self.template, tab, index)
+			local rank = self.template and self.template[tab] and self.template[tab][index]
+			local link = Talented:GetTalentLink(self.template, tab, index, rank)
 			if link then
 				if not TryInsertLinkInChat(link) then
 					Talented:ShowInDialog(link)
@@ -4813,13 +5410,17 @@ do
 					end
 					local left = i and i.left or ""
 					local right = i and i.right or ""
-					if right and right ~= "" then
-						if left and left ~= "" then
-							addline(left .. " " .. right, color, true)
-						else
-							addline(right, color, true)
-						end
-					else
+					if type(left) == "string" and left == "" then
+						left = nil
+					end
+					if type(right) == "string" and right == "" then
+						right = nil
+					end
+					if left and right then
+						GameTooltip:AddDoubleLine(left, right, color.r, color.g, color.b, color.r, color.g, color.b)
+					elseif right then
+						addline(right, color, true)
+					elseif left then
 						addline(left, color, true)
 					end
 				end
@@ -5088,8 +5689,49 @@ do
 	local prev_twinspect_show
 	local TURTLE_INSPECT_PREFIX = "TW_CHAT_MSG_WHISPER"
 	local TURTLE_INSPECT_DONE = "INSTalentEND;"
+	local TURTLE_TALENT_REQUEST = "TalentInfoRequest_"
+	local TURTLE_TALENT_ANSWER = ":TalentInfoAnswer_"
 	local INSPECT_REQUEST_THROTTLE = 0.75
 	local INSPECT_UI_SUPPRESS_WINDOW = 1.25
+
+	local function EncodeTurtleTooltipText(text)
+		text = tostring(text or "")
+		if text == "" then
+			return ""
+		end
+		return string.gsub(text, ":", "*dd*")
+	end
+
+	local function BuildTurtleTooltipPayload(lines)
+		if type(lines) ~= "table" then
+			return ""
+		end
+		local out = ""
+		for i = 1, table.getn(lines) do
+			local line = lines[i]
+			local left, right
+			if type(line) == "table" then
+				left, right = line.left, line.right
+			elseif type(line) == "string" then
+				left = line
+			end
+			if type(left) ~= "string" or left == "" then
+				left = " "
+			end
+			if type(right) ~= "string" or right == "" then
+				right = " "
+			end
+			-- Turtle's chat-link tooltip renderer does not clear per-line left/right
+			-- text before applying payload. Emit both sides for every line so stale
+			-- right-column values (cooldowns/range) cannot bleed across lines.
+			out = out .. "L" .. tostring(i) .. ";" .. EncodeTurtleTooltipText(left) .. "@"
+			out = out .. "R" .. tostring(i) .. ";" .. EncodeTurtleTooltipText(right) .. "@"
+		end
+		if type(TOOLTIP_TALENT_LEARN) == "string" and TOOLTIP_TALENT_LEARN ~= "" then
+			out = string.gsub(out, TOOLTIP_TALENT_LEARN, "")
+		end
+		return out
+	end
 
 	local function GetTurtleInspectSpec()
 		local com = _G.inspectCom or _G.InspectTalentsComFrame
@@ -5175,6 +5817,33 @@ do
 		Talented:RequestInspectData(unit or Talented:GetInspectUnit(), "inspect-show")
 		Talented:UpdateInspectTemplate()
 		return r1, r2, r3, r4
+	end
+
+	function Talented:HandleTurtleTalentTooltipRequest(prefix, message, channel, sender)
+		if type(prefix) ~= "string" or type(message) ~= "string" then
+			return false
+		end
+		if not string.find(prefix, TURTLE_INSPECT_PREFIX, 1, true) then
+			return false
+		end
+		local tree, packedIndex = string.match(message, TURTLE_TALENT_REQUEST .. "(%d+)_(%d+)")
+		if not tree then
+			return false
+		end
+		local class, tab, index, rank = self:DecodeCustomTalentLink(tree, packedIndex)
+		if not class then
+			class, tab, index, rank = self:ResolveTalentLinkSlot(tree, packedIndex)
+		end
+		if not class then
+			return false
+		end
+		local lines = self:BuildTalentTooltipLines(class, tab, index, rank)
+		local payload = BuildTurtleTooltipPayload(lines)
+		if payload ~= "" and type(_G.SendAddonMessage) == "function" and type(sender) == "string" and sender ~= "" then
+			local outPrefix = TURTLE_INSPECT_PREFIX .. "<" .. tostring(sender) .. ">"
+			pcall(_G.SendAddonMessage, outPrefix, TURTLE_TALENT_ANSWER .. payload, "GUILD")
+		end
+		return true
 	end
 
 	function Talented:RequestInspectData(unit, reason)
@@ -5285,26 +5954,28 @@ do
 	end
 
 	function Talented:CheckHookInspectUI()
+		self:RegisterEvent("CHAT_MSG_ADDON")
 		if not InspectFrameTab3 and not IsAddOnLoaded("Blizzard_InspectUI") then
 			return
 		end
-		self:RegisterEvent("INSPECT_TALENT_READY")
-		self:RegisterEvent("CHAT_MSG_ADDON")
-		self:RegisterEvent("PLAYER_TARGET_CHANGED")
 		if self.db.profile.hook_inspect_ui then
+			self:RegisterEvent("INSPECT_TALENT_READY")
+			self:RegisterEvent("PLAYER_TARGET_CHANGED")
 			if IsAddOnLoaded("Blizzard_InspectUI") then
 				self:HookInspectUI()
 			end
 		else
+			self:UnregisterEvent("INSPECT_TALENT_READY")
+			self:UnregisterEvent("PLAYER_TARGET_CHANGED")
 			if IsAddOnLoaded("Blizzard_InspectUI") then
 				self:UnhookInspectUI()
 			end
-			self:UnregisterEvent("CHAT_MSG_ADDON")
-			self:UnregisterEvent("PLAYER_TARGET_CHANGED")
 		end
 	end
 
 	function Talented:ADDON_LOADED(addon)
+		self:HookSetItemRef()
+		self:HookChatHyperlinkShow()
 		if addon == "Blizzard_TalentUI" then
 			self:HookTalentFrameToggle()
 			return
@@ -5341,6 +6012,9 @@ do
 
 	function Talented:CHAT_MSG_ADDON(prefix, message, channel, sender)
 		if type(prefix) ~= "string" or type(message) ~= "string" then
+			return
+		end
+		if self:HandleTurtleTalentTooltipRequest(prefix, message, channel, sender) then
 			return
 		end
 		if not string.find(prefix, TURTLE_INSPECT_PREFIX, 1, true) then
