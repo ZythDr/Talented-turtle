@@ -1732,9 +1732,15 @@ do
 		frame:SetScript("OnDragStart", function(self)
 			self:StartMoving()
 		end)
-		frame:SetScript("OnDragStop", function(self)
-			self:StopMovingOrSizing()
-		end)
+			frame:SetScript("OnDragStop", function(self)
+				self:StopMovingOrSizing()
+			end)
+			frame:SetScript("OnHide", function(self)
+				local editBox = self and self.editBox
+				if editBox and type(editBox.ClearFocus) == "function" then
+					editBox:ClearFocus()
+				end
+			end)
 		frame:SetSize(540, 140)
 		frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 		frame:SetBackdrop({
@@ -1759,23 +1765,29 @@ do
 		edit:SetAutoFocus(false)
 		frame.editBox = edit
 
-		local function accept()
-			local url = edit:GetText() or ""
-			url = string.gsub(url, "^%s+", "")
-			url = string.gsub(url, "%s+$", "")
-			frame:Hide()
-			local template = Talented:ImportTemplate(url)
-			if template then
-				Talented:OpenTemplate(template)
-			end
+			local function accept()
+				local url = edit:GetText() or ""
+				url = string.gsub(url, "^%s+", "")
+				url = string.gsub(url, "%s+$", "")
+				if type(edit.ClearFocus) == "function" then
+					edit:ClearFocus()
+				end
+				frame:Hide()
+				local template = Talented:ImportTemplate(url)
+				if template then
+					Talented:OpenTemplate(template)
+				end
 		end
 
 		edit:SetScript("OnEnterPressed", function()
 			accept()
 		end)
-		edit:SetScript("OnEscapePressed", function()
-			frame:Hide()
-		end)
+			edit:SetScript("OnEscapePressed", function()
+				if type(edit.ClearFocus) == "function" then
+					edit:ClearFocus()
+				end
+				frame:Hide()
+			end)
 
 		local import = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 		import:SetSize(110, 22)
@@ -1787,15 +1799,23 @@ do
 		cancel:SetSize(110, 22)
 		cancel:SetText(CANCEL or "Cancel")
 		cancel:SetPoint("LEFT", import, "RIGHT", 20, 0)
-		cancel:SetScript("OnClick", function()
-			frame:Hide()
-		end)
+			cancel:SetScript("OnClick", function()
+				if type(edit.ClearFocus) == "function" then
+					edit:ClearFocus()
+				end
+				frame:Hide()
+			end)
 
 		UISpecialFrames[table.getn(UISpecialFrames) + 1] = "TalentedImportURLDialog"
 		return frame
 	end
 
 	function Talented:ShowImportDialog()
+		local popup = StaticPopup_Show("TALENTED_IMPORT_URL")
+		if popup then
+			return
+		end
+
 		local frame = EnsureImportDialog()
 		frame:Show()
 		frame:Raise()
@@ -1988,23 +2008,6 @@ do
 		return menu
 	end
 
-		local function ResolvePopup(widget)
-			local popup = widget or _G.this
-			if type(popup) ~= "table" then
-				return nil
-			end
-			if popup.which or popup.wideEditBox or popup.editBox then
-				return popup
-			end
-			if type(popup.GetParent) == "function" then
-				local parent = popup:GetParent()
-				if type(parent) == "table" and (parent.which or parent.wideEditBox or parent.editBox) then
-					return parent
-				end
-			end
-			return popup
-		end
-
 		local function NormalizeText(text)
 			if type(text) ~= "string" then
 				return ""
@@ -2014,12 +2017,42 @@ do
 			return out
 		end
 
+		local function ResolvePopupFrameFromThis()
+			local widget = _G.this
+			if type(widget) ~= "table" then
+				return nil
+			end
+			if widget.which then
+				return widget
+			end
+			if type(widget.GetParent) == "function" then
+				local parent = widget:GetParent()
+				if type(parent) == "table" and parent.which then
+					return parent
+				end
+				if type(parent) == "table" and type(parent.GetParent) == "function" then
+					local grand = parent:GetParent()
+					if type(grand) == "table" and grand.which then
+						return grand
+					end
+				end
+			end
+			return nil
+		end
+
+		local function GetPopupEditBoxes(popup)
+			if type(popup) ~= "table" or type(popup.GetName) ~= "function" then
+				return nil, nil
+			end
+			local name = popup:GetName()
+			return getglobal(name .. "WideEditBox"), getglobal(name .. "EditBox")
+		end
+
 		local function ReadPopupText(popup)
-			if not popup then
+			if type(popup) ~= "table" then
 				return ""
 			end
-			local wide = popup.wideEditBox
-			local edit = popup.editBox
+			local wide, edit = GetPopupEditBoxes(popup)
 			local wideText = (wide and type(wide.GetText) == "function") and wide:GetText() or ""
 			local editText = (edit and type(edit.GetText) == "function") and edit:GetText() or ""
 			wideText = NormalizeText(wideText)
@@ -2030,6 +2063,73 @@ do
 			return editText
 		end
 
+		local function ClearPopupEditBoxes(popup)
+			if type(popup) ~= "table" then
+				return
+			end
+			local wide, edit = GetPopupEditBoxes(popup)
+			if wide and type(wide.SetText) == "function" then
+				wide:SetText("")
+			end
+			if edit and edit ~= wide and type(edit.SetText) == "function" then
+				edit:SetText("")
+			end
+		end
+
+		local function ClearPopupFocus(popup)
+			if type(popup) ~= "table" then
+				return
+			end
+			local wide, edit = GetPopupEditBoxes(popup)
+			if wide and type(wide.ClearFocus) == "function" then
+				wide:ClearFocus()
+			end
+			if edit and edit ~= wide and type(edit.ClearFocus) == "function" then
+				edit:ClearFocus()
+			end
+		end
+
+		local function FocusPopupEditBox(popup, highlight)
+			if type(popup) ~= "table" then
+				return
+			end
+			local wide, edit = GetPopupEditBoxes(popup)
+			local target = (wide and type(wide.IsShown) == "function" and wide:IsShown()) and wide or edit
+			if target and type(target.SetFocus) == "function" then
+				target:SetFocus()
+			end
+			if highlight and target and type(target.HighlightText) == "function" then
+				target:HighlightText()
+			end
+		end
+
+		local function AnchorWidePopupControls(popup)
+			if type(popup) ~= "table" or type(popup.GetName) ~= "function" then
+				return
+			end
+			local name = popup:GetName()
+			local wide, edit = GetPopupEditBoxes(popup)
+			if wide and type(wide.IsShown) == "function" and wide:IsShown() and type(wide.ClearAllPoints) == "function" then
+				wide:ClearAllPoints()
+				wide:SetPoint("TOPLEFT", popup, "TOPLEFT", 16, -44)
+				wide:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -16, -44)
+			end
+			local button1 = getglobal(name .. "Button1")
+			local button2 = getglobal(name .. "Button2")
+			local anchor = (wide and type(wide.IsShown) == "function" and wide:IsShown()) and wide or edit
+			if not button1 or not anchor then
+				return
+			end
+			button1:ClearAllPoints()
+			if button2 and type(button2.IsShown) == "function" and button2:IsShown() then
+				button2:ClearAllPoints()
+				button1:SetPoint("TOPRIGHT", anchor, "BOTTOM", -6, -8)
+				button2:SetPoint("LEFT", button1, "RIGHT", 13, 0)
+			else
+				button1:SetPoint("TOP", anchor, "BOTTOM", 0, -8)
+			end
+		end
+
 		StaticPopupDialogs["TALENTED_IMPORT_URL"] = {
 		text = L["Enter a Turtlecraft Talents URL (https://talents.turtlecraft.gg/...)."],
 		button1 = ACCEPT,
@@ -2038,55 +2138,45 @@ do
 		hasWideEditBox = 1,
 		maxLetters = 256,
 		whileDead = 1,
-			OnShow = function(self)
-				local popup = ResolvePopup(self)
+			OnShow = function()
+				local popup = ResolvePopupFrameFromThis()
 				if not popup then
 					return
 				end
 				if type(popup.SetWidth) == "function" then
 					popup:SetWidth(520)
 				end
-				local wide, edit = popup.wideEditBox, popup.editBox
-				if wide and type(wide.SetText) == "function" then
-					wide:SetText("")
+				ClearPopupEditBoxes(popup)
+				AnchorWidePopupControls(popup)
+				FocusPopupEditBox(popup, false)
+			end,
+			OnAccept = function()
+				local popup = ResolvePopupFrameFromThis()
+				if not popup then
+					return
 				end
-				if edit and type(edit.SetText) == "function" and edit ~= wide then
-					edit:SetText("")
-				end
-				local target = wide or edit
-				if target and type(target.ClearAllPoints) == "function" then
-					target:ClearAllPoints()
-					target:SetPoint("TOPLEFT", popup, "TOPLEFT", 16, -44)
-					target:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -16, -44)
+				local url = ReadPopupText(popup)
+				ClearPopupFocus(popup)
+				local template = Talented:ImportTemplate(url)
+				if template then
+					Talented:OpenTemplate(template)
 				end
 			end,
-		OnAccept = function(self)
-			local popup = ResolvePopup(self)
-			if not popup then
-				return
-			end
-			local url = ReadPopupText(popup)
-			if popup.Hide then
-				popup:Hide()
-			end
-			local template = Talented:ImportTemplate(url)
-			if template then
-				Talented:OpenTemplate(template)
-			end
-		end,
+			OnHide = function()
+				local popup = ResolvePopupFrameFromThis()
+				if not popup then
+					return
+				end
+				ClearPopupFocus(popup)
+				ClearPopupEditBoxes(popup)
+			end,
 		timeout = 0,
-		EditBoxOnEnterPressed = function(self)
-			local parent = ResolvePopup(self)
-			if parent and parent.which and StaticPopupDialogs[parent.which] and StaticPopupDialogs[parent.which].OnAccept then
-				StaticPopupDialogs[parent.which].OnAccept(parent)
-			end
+		EditBoxOnEnterPressed = function()
+			StaticPopup_OnClick(this:GetParent(), 1)
 		end,
-		EditBoxOnEscapePressed = function(self)
-			local parent = ResolvePopup(self)
-			if parent and parent.Hide then
-				parent:Hide()
-			end
-		end,
+			EditBoxOnEscapePressed = function()
+				this:GetParent():Hide()
+			end,
 		hideOnEscape = 1
 	}
 
@@ -2097,23 +2187,104 @@ do
 			hasEditBox = 1,
 			maxLetters = 256,
 			whileDead = 1,
-			autoCompleteParams = AUTOCOMPLETE_LIST and AUTOCOMPLETE_LIST.WHISPER,
-			OnAccept = function(self)
-				local popup = ResolvePopup(self)
+				autoCompleteParams = AUTOCOMPLETE_LIST and AUTOCOMPLETE_LIST.WHISPER,
+					OnAccept = function()
+						local popup = ResolvePopupFrameFromThis()
+						if not popup then
+							return
+						end
+						local name = ReadPopupText(popup)
+						ClearPopupFocus(popup)
+						Talented:ExportTemplateToUser(name)
+					end,
+				OnShow = function()
+					local popup = ResolvePopupFrameFromThis()
+					if not popup then
+						return
+					end
+					ClearPopupEditBoxes(popup)
+					FocusPopupEditBox(popup, false)
+				end,
+				OnHide = function()
+					local popup = ResolvePopupFrameFromThis()
+					if not popup then
+						return
+					end
+					ClearPopupFocus(popup)
+					ClearPopupEditBoxes(popup)
+				end,
+		timeout = 0,
+		EditBoxOnEnterPressed = function()
+			StaticPopup_OnClick(this:GetParent(), 1)
+		end,
+		EditBoxOnEscapePressed = function()
+			this:GetParent():Hide()
+		end,
+		hideOnEscape = 1
+	}
+
+		StaticPopupDialogs["TALENTED_SHOW_URL"] = {
+			text = L["URL:"],
+			button1 = OKAY,
+			hasEditBox = 1,
+			hasWideEditBox = 1,
+			maxLetters = 2048,
+			whileDead = 1,
+			OnShow = function(data)
+				local popup = ResolvePopupFrameFromThis()
 				if not popup then
 					return
 				end
-				local name = ReadPopupText(popup)
-				if popup.Hide then
-					popup:Hide()
+				if type(popup.SetWidth) == "function" then
+					popup:SetWidth(620)
 				end
-				Talented:ExportTemplateToUser(name)
+				local text = type(data) == "string" and data or type(Talented._showUrlDialogText) == "string" and Talented._showUrlDialogText or ""
+				local wide, edit = GetPopupEditBoxes(popup)
+				local target = (wide and type(wide.IsShown) == "function" and wide:IsShown()) and wide or edit
+				if target and type(target.SetText) == "function" then
+					target:SetText(text)
+				end
+				AnchorWidePopupControls(popup)
+				FocusPopupEditBox(popup, true)
 			end,
-		timeout = 0,
-		EditBoxOnEnterPressed = StaticPopupDialogs.TALENTED_IMPORT_URL.EditBoxOnEnterPressed,
-		EditBoxOnEscapePressed = StaticPopupDialogs.TALENTED_IMPORT_URL.EditBoxOnEscapePressed,
-		hideOnEscape = 1
-	}
+			OnAccept = function()
+				local popup = ResolvePopupFrameFromThis()
+				if not popup then
+					return
+				end
+				ClearPopupFocus(popup)
+			end,
+			OnHide = function()
+				local popup = ResolvePopupFrameFromThis()
+				if not popup then
+					return
+				end
+				Talented._showUrlDialogText = nil
+				ClearPopupFocus(popup)
+				local wide, edit = GetPopupEditBoxes(popup)
+				if wide and type(wide.SetText) == "function" then
+					wide:SetText("")
+				end
+				if edit and edit ~= wide and type(edit.SetText) == "function" then
+					edit:SetText("")
+				end
+			end,
+			timeout = 0,
+			EditBoxOnEnterPressed = function()
+				StaticPopup_OnClick(this:GetParent(), 1)
+			end,
+			EditBoxOnEscapePressed = function()
+				this:GetParent():Hide()
+			end,
+			hideOnEscape = 1
+		}
+
+		function Talented:ShowURLDialog(text)
+			local value = type(text) == "string" and text or ""
+			Talented._showUrlDialogText = value
+			local popup = StaticPopup_Show("TALENTED_SHOW_URL", nil, nil, value)
+			return popup and true or false
+		end
 
 	function Talented:CreateActionMenu()
 		local menu = self:GetNamedMenu("Action")
@@ -2207,18 +2378,20 @@ do
 					checked = button.checked
 				end
 			end
-			if targetName == nil then
-				return
-			end
-			if checked then
-				Talented.db.char.targets[targetName] = nil
-			else
-				Talented.db.char.targets[targetName] = name
-				if not name and Talented.base and Talented.base.view then
-					Talented.base.view:ClearTarget()
+				if targetName == nil then
+					return
+				end
+				if checked then
+					Talented.db.char.targets[targetName] = nil
+				else
+					Talented.db.char.targets[targetName] = name
+				end
+				if type(Talented.RefreshTargetOverlays) == "function" then
+					Talented:RefreshTargetOverlays(targetName)
+				elseif Talented.base and Talented.base.view and type(Talented.base.view.Update) == "function" then
+					Talented.base.view:Update()
 				end
 			end
-		end
 		entry.arg2 = self.template.name
 		menu[table.getn(menu) + 1] = entry
 
@@ -2288,7 +2461,9 @@ do
 
 		local url = exporter(Talented, Talented.template)
 		if url then
-			Talented:ShowInDialog(url)
+			if not (type(Talented.ShowURLDialog) == "function" and Talented:ShowURLDialog(url)) then
+				Talented:ShowInDialog(url)
+			end
 		end
 	end
 

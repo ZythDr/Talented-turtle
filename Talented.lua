@@ -943,6 +943,43 @@ do
 		return target
 	end
 
+	function Talented:RefreshTargetOverlays(targetName)
+		local _, playerClass = UnitClass("player")
+		local petClass = self.GetPetClass and self:GetPetClass() or nil
+		local petName = UnitName("PET")
+		for _, view in self:IterateTalentViews() do
+			local template = view and view.template
+			if type(template) == "table" then
+				local key
+				local shouldRefresh = false
+				if template.pet then
+					key = petName
+					shouldRefresh = key and (targetName == nil or targetName == key)
+					if shouldRefresh and petClass and template.class ~= petClass then
+						shouldRefresh = false
+					end
+				elseif template.talentGroup then
+					key = template.talentGroup
+					shouldRefresh = (targetName == nil or targetName == key)
+					if shouldRefresh and template.class ~= playerClass then
+						shouldRefresh = false
+					end
+				end
+				if shouldRefresh then
+					local target = self:MakeTarget(key)
+					if type(view.SetTemplate) == "function" then
+						view:SetTemplate(template, target)
+					else
+						view.target = target
+						if type(view.Update) == "function" then
+							view:Update()
+						end
+					end
+				end
+			end
+		end
+	end
+
 	function Talented:GetMode()
 		return self.mode
 	end
@@ -2308,6 +2345,13 @@ do
 		end
 		if not self._talentedCloseSpecialWindowsProxy then
 			self._talentedCloseSpecialWindowsProxy = function(a1, a2, a3, a4, a5, a6, a7, a8, a9)
+				local original = Talented and Talented._talentedCloseSpecialWindowsOriginal
+				if type(original) == "function" then
+					local ok, handled = pcall(original, a1, a2, a3, a4, a5, a6, a7, a8, a9)
+					if ok and handled then
+						return handled
+					end
+				end
 				local urlDialog = _G.TalentedURLDialog
 				if urlDialog and urlDialog.IsShown and urlDialog:IsShown() then
 					urlDialog:Hide()
@@ -2319,16 +2363,14 @@ do
 					return 1
 				end
 				if Talented and Talented.base and Talented.base.IsShown and Talented.base:IsShown() then
+					local base = Talented.base
 					if type(HideUIPanel) == "function" then
-						pcall(HideUIPanel, Talented.base)
-					else
-						Talented.base:Hide()
+						pcall(HideUIPanel, base)
+					end
+					if base and base.IsShown and base:IsShown() and type(base.Hide) == "function" then
+						base:Hide()
 					end
 					return 1
-				end
-				local original = Talented and Talented._talentedCloseSpecialWindowsOriginal
-				if type(original) == "function" then
-					return original(a1, a2, a3, a4, a5, a6, a7, a8, a9)
 				end
 			end
 		end
@@ -2428,6 +2470,7 @@ do
 	end
 
 	function Talented:OpenTalentedFrame()
+		self:HookCloseSpecialWindows()
 		local frame = self:CreateBaseFrame()
 		if type(GetCurrentKeyBoardFocus) == "function" then
 			local focus = GetCurrentKeyBoardFocus()
@@ -5389,6 +5432,12 @@ do
 	function Talented:ShowInDialog(text, a1, a2, a3, a4, a5, a6, a7, a8)
 		if type(text) == "string" and string.find(text, "%", 1, true) then
 			text = SafeFormat(text, a1, a2, a3, a4, a5, a6, a7, a8)
+		end
+		if type(self.ShowURLDialog) == "function" then
+			local ok, shown = pcall(self.ShowURLDialog, self, text)
+			if ok and shown then
+				return
+			end
 		end
 		local dialog = EnsureUrlDialog()
 		local edit = dialog and dialog.editBox
