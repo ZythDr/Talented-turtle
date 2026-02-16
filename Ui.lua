@@ -425,11 +425,14 @@ do
 
 		do
 			local f = CreateFrame("Frame", nil, parent)
+			f:SetSize(20, 20)
+			f:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -14, 8)
+			f:SetFrameLevel(parent:GetFrameLevel() + 2)
+
 			local text = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 			text:SetJustifyH("RIGHT")
-			text:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -14, 8)
-			f:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
-			f:SetFrameLevel(parent:GetFrameLevel() + 2)
+			text:SetSize(400, 20)
+			text:SetPoint("RIGHT", f, "RIGHT", 1, 1)
 			f.text = text
 			parent.pointsleft = f
 		end
@@ -1955,10 +1958,12 @@ do
 			end
 			table.sort(menuList, Sort_Template_Menu_Entry)
 			local mnu = self:GetNamedMenu(class)
-			mnu.text = ColorizeByClass(class, classNames[class])
 			if index == 1 then
+				mnu.text = classNames[class]
 				mnu.disabled = true
+				mnu.colorCode = nil
 			else
+				mnu.text = ColorizeByClass(class, classNames[class])
 				mnu.disabled = nil
 				mnu.colorCode = nil
 			end

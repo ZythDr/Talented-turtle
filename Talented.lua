@@ -176,6 +176,7 @@ local RawGetTalentTabInfo = _G.GetTalentTabInfo
 local RawGetTalentInfo = _G.GetTalentInfo
 local RawGetTalentPrereqs = _G.GetTalentPrereqs
 local RawGetUnspentTalentPoints = _G.GetUnspentTalentPoints
+local RawUnitCharacterPoints = _G.UnitCharacterPoints
 local RawLearnTalent = _G.LearnTalent
 local RawGetSpellInfo = _G.GetSpellInfo
 local RawSpellInfo = _G.SpellInfo
@@ -258,18 +259,39 @@ local function CompatSetActiveTalentGroup(group)
 	return
 end
 
-local function CompatGetUnspentTalentPoints(_, pet, group)
+local function CompatGetUnspentTalentPoints(inspect, pet, group)
 	if pet then
 		return 0
 	end
-	local ok, value = pcall(RawGetUnspentTalentPoints, nil, pet, group)
+	if not inspect and type(RawUnitCharacterPoints) == "function" then
+		local ok, value = pcall(RawUnitCharacterPoints, "player")
+		if ok and type(value) == "number" then
+			return value
+		end
+	end
+	if type(RawGetUnspentTalentPoints) ~= "function" then
+		return 0
+	end
+
+	-- Prefer native Vanilla-style call first. Some clients accept extended
+	-- signatures but return 0 even when unspent points exist.
+	local ok, value = pcall(RawGetUnspentTalentPoints)
 	if ok and type(value) == "number" then
 		return value
 	end
-	ok, value = pcall(RawGetUnspentTalentPoints)
+
+	ok, value = pcall(RawGetUnspentTalentPoints, nil, pet, group)
 	if ok and type(value) == "number" then
 		return value
 	end
+
+	if group ~= nil then
+		ok, value = pcall(RawGetUnspentTalentPoints, group)
+		if ok and type(value) == "number" then
+			return value
+		end
+	end
+
 	return 0
 end
 
@@ -2379,9 +2401,48 @@ do
 		end
 	end
 
+	function Talented:HookCloseAllWindows()
+		if type(_G.CloseAllWindows) ~= "function" then
+			return
+		end
+		if not self._talentedCloseAllWindowsOriginal then
+			self._talentedCloseAllWindowsOriginal = _G.CloseAllWindows
+		end
+		if not self._talentedCloseAllWindowsProxy then
+			self._talentedCloseAllWindowsProxy = function(ignoreCenter, a1, a2, a3, a4, a5, a6, a7, a8)
+				local handled
+				local original = Talented and Talented._talentedCloseAllWindowsOriginal
+				if type(original) == "function" then
+					local ok, result = pcall(original, ignoreCenter, a1, a2, a3, a4, a5, a6, a7, a8)
+					if ok then
+						handled = result
+					end
+				end
+
+				local closedTalented
+				if Talented and Talented.base and Talented.base.IsShown and Talented.base:IsShown() then
+					local base = Talented.base
+					if type(HideUIPanel) == "function" then
+						pcall(HideUIPanel, base)
+					end
+					if base and base.IsShown and base:IsShown() and type(base.Hide) == "function" then
+						base:Hide()
+					end
+					closedTalented = 1
+				end
+
+				return handled or closedTalented
+			end
+		end
+		if _G.CloseAllWindows ~= self._talentedCloseAllWindowsProxy then
+			_G.CloseAllWindows = self._talentedCloseAllWindowsProxy
+		end
+	end
+
 	function Talented:OnEnable()
 		self:HookTalentFrameToggle()
 		self:HookCloseSpecialWindows()
+		self:HookCloseAllWindows()
 		self:HookSetItemRef()
 		self:HookChatHyperlinkShow()
 		self:SecureHook("UpdateMicroButtons")
@@ -2398,6 +2459,9 @@ do
 		if _G.CloseSpecialWindows == self._talentedCloseSpecialWindowsProxy and type(self._talentedCloseSpecialWindowsOriginal) == "function" then
 			_G.CloseSpecialWindows = self._talentedCloseSpecialWindowsOriginal
 		end
+		if _G.CloseAllWindows == self._talentedCloseAllWindowsProxy and type(self._talentedCloseAllWindowsOriginal) == "function" then
+			_G.CloseAllWindows = self._talentedCloseAllWindowsOriginal
+		end
 		if _G.SetItemRef == self._talentedSetItemRefProxy and type(self._talentedSetItemRefOriginal) == "function" then
 			_G.SetItemRef = self._talentedSetItemRefOriginal
 		end
@@ -2409,6 +2473,7 @@ do
 	function Talented:PLAYER_ENTERING_WORLD()
 		self:HookTalentFrameToggle()
 		self:HookCloseSpecialWindows()
+		self:HookCloseAllWindows()
 		local E = ElvUI and unpack(ElvUI)
 		if E then
 			-- spec tabs
@@ -2471,6 +2536,7 @@ do
 
 	function Talented:OpenTalentedFrame()
 		self:HookCloseSpecialWindows()
+		self:HookCloseAllWindows()
 		local frame = self:CreateBaseFrame()
 		if type(GetCurrentKeyBoardFocus) == "function" then
 			local focus = GetCurrentKeyBoardFocus()
@@ -4338,13 +4404,14 @@ do
 		if packed then
 			self:UnpackTemplate(src)
 		end
+		dst.code = nil
 		dst.class = src.class
+		for i = 1, table.getn(dst) do
+			dst[i] = nil
+		end
 		for tab, talents in ipairs(src) do
-			local d = dst[tab]
-			if not d then
-				d = {}
-				dst[tab] = d
-			end
+			local d = {}
+			dst[tab] = d
 			for index, value in ipairs(talents) do
 				d[index] = value
 			end
@@ -4476,6 +4543,17 @@ do
 	end
 
 	local function GetMaxPoints(inspect, pet, spec)
+		if not inspect and not pet and type(RawUnitCharacterPoints) == "function" then
+			local spent = 0
+			for i = 1, GetNumTalentTabs() do
+				local _, _, points = GetTalentTabInfo(i)
+				spent = spent + (points or 0)
+			end
+			local ok, unspent = pcall(RawUnitCharacterPoints, "player")
+			if ok and type(unspent) == "number" then
+				return spent + unspent
+			end
+		end
 		local total = 0
 		for i = 1, GetNumTalentTabs(inspect, pet, spec) do
 			local _, _, points = GetTalentTabInfo(i, inspect, pet, spec)
@@ -4738,12 +4816,25 @@ do
 		end
 		local pointsleft = self.frame.pointsleft
 		if pointsleft then
-			if maxpoints ~= total and template.talentGroup then
-				pointsleft:Show()
-				SetFormattedTextSafe(pointsleft.text, L["You have %d talent |4point:points; left"], maxpoints - total)
-			else
-				pointsleft:Hide()
+			local remaining
+			if template and template.talentGroup and not self.pet and type(RawUnitCharacterPoints) == "function" then
+				local ok, value = pcall(RawUnitCharacterPoints, "player")
+				if ok and type(value) == "number" then
+					remaining = value
+				end
 			end
+			if type(remaining) ~= "number" then
+				remaining = maxpoints - total
+			end
+			local color = NORMAL_FONT_COLOR
+			if remaining > 0 then
+				color = GREEN_FONT_COLOR
+			elseif remaining < 0 then
+				color = RED_FONT_COLOR
+			end
+			pointsleft:Show()
+			SetFormattedTextSafe(pointsleft.text, L["Remaining points: %d"], remaining)
+			pointsleft.text:SetTextColor(color.r, color.g, color.b)
 		end
 		local edit = self.frame.editname
 		local colorbutton = self.frame.templatecolor
@@ -4935,10 +5026,16 @@ do
 		if IsChatLinkModifiedClick() then
 			local rank = self.template and self.template[tab] and self.template[tab][index]
 			local link = Talented:GetTalentLink(self.template, tab, index, rank)
+			local inserted
 			if link then
 				-- Vanilla behavior: modified-click inserts into an active chat
 				-- edit box only. If chat is not active, do nothing.
-				TryInsertLinkInChat(link)
+				inserted = TryInsertLinkInChat(link)
+			end
+			-- Shift-click QoL: if chat is not active and this is a live talent view,
+			-- treat it as a quick-learn action (bypass confirm popup).
+			if not inserted and button == "LeftButton" and self.mode == "edit" and self.spec and self.template and self.template.talentGroup and type(_G.IsShiftKeyDown) == "function" and _G.IsShiftKeyDown() and not GetOpenChatEditBox() then
+				self:UpdateTalent(tab, index, 1, true)
 			end
 			return
 		else
@@ -4946,12 +5043,12 @@ do
 		end
 	end
 
-	function TalentView:UpdateTalent(tab, index, offset)
+	function TalentView:UpdateTalent(tab, index, offset, bypassConfirm)
 		if self.mode ~= "edit" then return end
 		if self.spec then
 			-- Applying talent
 			if offset > 0 then
-				Talented:LearnTalent(self.template, tab, index)
+				Talented:LearnTalent(self.template, tab, index, bypassConfirm)
 			end
 			return
 		end
@@ -5208,40 +5305,74 @@ end
 -- learn.lua
 --
 
-do
-	local StaticPopupDialogs = StaticPopupDialogs
-
-	local function ShowDialog(text, tab, index, pet)
-		StaticPopupDialogs.TALENTED_CONFIRM_LEARN = {
-			button1 = YES,
-			button2 = NO,
-			OnAccept = function(self)
-				LearnTalent(self.talent_tab, self.talent_index, self.is_pet)
-			end,
-			timeout = 0,
-			exclusive = 1,
-			whileDead = 1,
-			interruptCinematic = 1
-		}
-		ShowDialog = function(text, tab, index, pet)
-			StaticPopupDialogs.TALENTED_CONFIRM_LEARN.text = text
-			local dlg = StaticPopup_Show "TALENTED_CONFIRM_LEARN"
-			dlg.talent_tab = tab
-			dlg.talent_index = index
-			dlg.is_pet = pet
-			return dlg
+	do
+		local StaticPopupDialogs = StaticPopupDialogs
+		local function ResolvePopupFrameFromThis()
+			local widget = _G.this
+			if type(widget) ~= "table" then
+				return nil
+			end
+			if widget.which then
+				return widget
+			end
+			if type(widget.GetParent) == "function" then
+				local parent = widget:GetParent()
+				if type(parent) == "table" and parent.which then
+					return parent
+				end
+			end
+			return nil
 		end
-		return ShowDialog(text, tab, index, pet)
-	end
 
-	function Talented:LearnTalent(template, tab, index)
+		local function ShowDialog(text, tab, index, pet)
+			StaticPopupDialogs.TALENTED_CONFIRM_LEARN = {
+				button1 = YES,
+				button2 = NO,
+				OnAccept = function(data)
+					local tabIndex, talentIndex, isPet
+					if type(data) == "table" then
+						tabIndex = data.talent_tab
+						talentIndex = data.talent_index
+						isPet = data.is_pet
+					end
+					if tabIndex == nil or talentIndex == nil then
+						local popup = ResolvePopupFrameFromThis()
+						if popup then
+							tabIndex = popup.talent_tab
+							talentIndex = popup.talent_index
+							isPet = popup.is_pet
+						end
+					end
+					if tabIndex == nil or talentIndex == nil then
+						return
+					end
+					LearnTalent(tabIndex, talentIndex, isPet)
+				end,
+				timeout = 0,
+				exclusive = 1,
+				whileDead = 1,
+				interruptCinematic = 1
+			}
+			ShowDialog = function(text, tab, index, pet)
+				StaticPopupDialogs.TALENTED_CONFIRM_LEARN.text = text
+				local dlg = StaticPopup_Show("TALENTED_CONFIRM_LEARN", nil, nil, {
+					talent_tab = tab,
+					talent_index = index,
+					is_pet = pet
+				})
+				if dlg then
+					dlg.talent_tab = tab
+					dlg.talent_index = index
+					dlg.is_pet = pet
+				end
+				return dlg
+			end
+			return ShowDialog(text, tab, index, pet)
+		end
+
+	function Talented:LearnTalent(template, tab, index, bypassConfirm)
 		local is_pet = not RAID_CLASS_COLORS[template.class]
 		local p = self.db.profile
-
-		if not p.confirmlearn then
-			LearnTalent(tab, index, is_pet)
-			return
-		end
 
 		if not p.always_call_learn_talents then
 			local state = self:GetTalentState(template, tab, index)
@@ -5250,8 +5381,13 @@ do
 					state == "unavailable" or -- prereqs not fullfilled
 					GetUnspentTalentPoints(nil, is_pet, GetActiveTalentGroup(nil, is_pet)) == 0
 			 then -- no more points
-				return
+					return
+				end
 			end
+
+		if bypassConfirm or not p.confirmlearn then
+			LearnTalent(tab, index, is_pet)
+			return
 		end
 
 		ShowDialog(SafeFormat(L['Are you sure that you want to learn "%s (%d/%d)" ?'], self:GetTalentName(template.class, tab, index), template[tab][index] + 1, self:GetTalentRanks(template.class, tab, index)), tab, index, is_pet)
@@ -5533,6 +5669,35 @@ do
 			end
 		end
 
+		local function tiphasline(tip, needle)
+			if type(needle) ~= "string" or needle == "" then
+				return false
+			end
+			if type(tip) == "string" then
+				return string.find(tip, needle, 1, true) ~= nil
+			end
+			if type(tip) ~= "table" then
+				return false
+			end
+			for _, row in ipairs(tip) do
+				if type(row) == "string" then
+					if string.find(row, needle, 1, true) then
+						return true
+					end
+				elseif type(row) == "table" then
+					local left = row.left
+					local right = row.right
+					if type(left) == "string" and string.find(left, needle, 1, true) then
+						return true
+					end
+					if type(right) == "string" and string.find(right, needle, 1, true) then
+						return true
+					end
+				end
+			end
+			return false
+		end
+
 	local lastTooltipInfo = {}
 	local function TooltipIsOwnedByFrame(frame)
 		if not frame or type(GameTooltip.IsOwned) ~= "function" then
@@ -5542,10 +5707,10 @@ do
 		return ok and owned
 	end
 
-	local function IsValidTooltipFrame(frame)
-		if not frame then
-			return false
-		end
+		local function IsValidTooltipFrame(frame)
+			if not frame then
+				return false
+			end
 		if type(frame.GetParent) ~= "function" then
 			return false
 		end
@@ -5553,8 +5718,25 @@ do
 		if not parent or type(parent.view) ~= "table" then
 			return false
 		end
-		return true
-	end
+			return true
+		end
+
+		local function TooltipHasLineText(needle)
+			if type(needle) ~= "string" or needle == "" then
+				return false
+			end
+			local count = (type(GameTooltip.NumLines) == "function" and GameTooltip:NumLines()) or 0
+			for i = 1, count do
+				local fs = _G["GameTooltipTextLeft" .. i]
+				if fs and type(fs.GetText) == "function" then
+					local text = fs:GetText()
+					if type(text) == "string" and string.find(text, needle, 1, true) then
+						return true
+					end
+				end
+			end
+			return false
+		end
 
 		function Talented:SetTooltipInfo(frame, class, tab, index)
 		if not IsValidTooltipFrame(frame) then
@@ -5599,13 +5781,14 @@ do
 					end
 				end
 
-			if not usingDefaultTooltip then
-				local tree = self.spelldata[class][tab]
-				local info = tree[index]
-				local tier = (info.row - 1) * self:GetSkillPointsPerTier(class)
-				local ranks, req = table.getn(info.ranks), info.req
-				addline(self:GetTalentName(class, tab, index), HIGHLIGHT_FONT_COLOR)
-				addline(SafeFormat(TOOLTIP_TALENT_RANK or "Rank %d/%d", rank, ranks), HIGHLIGHT_FONT_COLOR)
+				if not usingDefaultTooltip then
+					local tree = self.spelldata[class][tab]
+					local info = tree[index]
+					local tier = (info.row - 1) * self:GetSkillPointsPerTier(class)
+					local ranks, req = table.getn(info.ranks), info.req
+					local hasLearnHint = false
+					addline(self:GetTalentName(class, tab, index), HIGHLIGHT_FONT_COLOR)
+					addline(SafeFormat(TOOLTIP_TALENT_RANK or "Rank %d/%d", rank, ranks), HIGHLIGHT_FONT_COLOR)
 				if req then
 					local oranks = table.getn(tree[req].ranks)
 					if template[tab][req] < oranks then
@@ -5615,28 +5798,34 @@ do
 				if tier >= 1 and self:GetTalentTabCount(template, tab) < tier then
 					addline(SafeFormat(TOOLTIP_TALENT_TIER_POINTS or "", tier, self.tabdata[class][tab].name), RED_FONT_COLOR)
 				end
-				if IsAltKeyDown() then
-					for i = 1, ranks do
-							local tip = self:GetTalentDesc(class, tab, index, i, allowNativeTooltip)
-						if type(tip) == "table" then
-							tip = tip[table.getn(tip)].left
+					if IsAltKeyDown() then
+						for i = 1, ranks do
+								local tip = self:GetTalentDesc(class, tab, index, i, allowNativeTooltip)
+							if type(tip) == "table" then
+								tip = tip[table.getn(tip)].left
 						end
 						addline(tip, i == rank and HIGHLIGHT_FONT_COLOR or NORMAL_FONT_COLOR, true)
-					end
-				else
-						if rank > 0 then
-								addtipline(self:GetTalentDesc(class, tab, index, rank, allowNativeTooltip))
-							end
-							if rank < ranks then
-								addline("|n" .. (TOOLTIP_TALENT_NEXT_RANK or "Next rank:"), HIGHLIGHT_FONT_COLOR)
-								addtipline(self:GetTalentDesc(class, tab, index, rank + 1, allowNativeTooltip))
+						end
+					else
+							if rank > 0 then
+									local currentTip = self:GetTalentDesc(class, tab, index, rank, allowNativeTooltip)
+									addtipline(currentTip)
+									hasLearnHint = tiphasline(currentTip, TOOLTIP_TALENT_LEARN)
+								end
+								if rank < ranks then
+									addline("|n" .. (TOOLTIP_TALENT_NEXT_RANK or "Next rank:"), HIGHLIGHT_FONT_COLOR)
+									local nextTip = self:GetTalentDesc(class, tab, index, rank + 1, allowNativeTooltip)
+									addtipline(nextTip)
+									if not hasLearnHint then
+										hasLearnHint = tiphasline(nextTip, TOOLTIP_TALENT_LEARN)
+									end
+								end
 							end
 						end
-					end
 			local s = self:GetTalentState(template, tab, index)
 		if self.mode == "edit" then
 			if template.talentGroup then
-				if s == "available" or s == "empty" then
+				if (s == "available" or s == "empty") and not hasLearnHint and not TooltipHasLineText(TOOLTIP_TALENT_LEARN) then
 					addline(TOOLTIP_TALENT_LEARN, GREEN_FONT_COLOR)
 				end
 			elseif s == "full" then
@@ -5732,20 +5921,19 @@ do
 		local current = self:GetActiveSpec()
 		for tab, tree in ipairs(self:UncompressSpellData(template.class)) do
 			for index = 1, table.getn(tree) do
-				local target = template[tab][index]
-				local rank = current[tab][index]
-				if rank < target then
-					local state = self:GetTalentState(current, tab, index)
-					if state == "available" or state == "empty" then
-						LearnTalent(tab, index, false)
-						local _, _, _, _, newrank = GetTalentInfo(tab, index)
-						if type(newrank) == "number" and newrank > rank then
+					local target = template[tab][index]
+					local rank = current[tab][index]
+					if rank < target then
+						local state = self:GetTalentState(current, tab, index)
+						if state == "available" or state == "empty" then
+							LearnTalent(tab, index, false)
+							-- Vanilla/Turtle talent updates are asynchronous.
+							-- Apply one point per pass and continue on CHARACTER_POINTS_CHANGED.
 							return true
 						end
 					end
 				end
 			end
-		end
 		return self:CheckTalentPointsApplied()
 	end
 
