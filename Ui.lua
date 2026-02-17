@@ -1254,6 +1254,16 @@ do
 		picker:SetColorRGB(r, g, b)
 		picker.func = apply
 		picker.cancelFunc = cancel
+		-- Keep the native color picker above Talented's dialog frame.
+		if type(picker.SetFrameStrata) == "function" then
+			picker:SetFrameStrata("FULLSCREEN_DIALOG")
+		end
+		if type(picker.SetToplevel) == "function" then
+			picker:SetToplevel(true)
+		end
+		if _G.TalentedFrame and type(picker.SetFrameLevel) == "function" then
+			picker:SetFrameLevel(_G.TalentedFrame:GetFrameLevel() + 30)
+		end
 		if picker.Hide then
 			picker:Hide()
 		end
@@ -2409,7 +2419,7 @@ do
 			}
 
 		entry = self:GetNamedMenu("Export")
-		entry.text = L["Export template"]
+		entry.text = L["Export Template ..."]
 		entry.func = nil
 		entry.hasArrow = true
 		entry.menuList = self:GetNamedMenu("exporters")
@@ -2526,29 +2536,29 @@ do
 			exporters[i].text = nil
 		end
 
-		local exporterCount = index - 1
-		local exportEntry = self:GetNamedMenu("Export")
-		if exporterCount <= 0 then
-			exportEntry.text = L["Export template"]
-			exportEntry.func = nil
-			exportEntry.hasArrow = nil
-			exportEntry.menuList = nil
-			exportEntry.arg1 = nil
-			exportEntry.disabled = true
-		elseif exporterCount == 1 then
-			local single = exporters[1]
-			exportEntry.text = string.format(L["Export to %s"], single.text)
-			exportEntry.func = Export_Template
-			exportEntry.hasArrow = nil
-			exportEntry.menuList = nil
-			exportEntry.arg1 = single.arg1
-			exportEntry.disabled = nil
-		else
-			exportEntry.text = L["Export template"]
-			exportEntry.func = nil
-			exportEntry.hasArrow = true
-			exportEntry.menuList = exporters
-			exportEntry.arg1 = nil
+			local exporterCount = index - 1
+			local exportEntry = self:GetNamedMenu("Export")
+			if exporterCount <= 0 then
+				exportEntry.text = L["Export Template ..."]
+				exportEntry.func = nil
+				exportEntry.hasArrow = nil
+				exportEntry.menuList = nil
+				exportEntry.arg1 = nil
+				exportEntry.disabled = true
+			elseif exporterCount == 1 then
+				local single = exporters[1]
+				exportEntry.text = L["Export Template ..."]
+				exportEntry.func = Export_Template
+				exportEntry.hasArrow = nil
+				exportEntry.menuList = nil
+				exportEntry.arg1 = single.arg1
+				exportEntry.disabled = nil
+			else
+				exportEntry.text = L["Export Template ..."]
+				exportEntry.func = nil
+				exportEntry.hasArrow = true
+				exportEntry.menuList = exporters
+				exportEntry.arg1 = nil
 			exportEntry.disabled = nil
 		end
 
