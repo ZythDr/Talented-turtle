@@ -1059,6 +1059,26 @@ do
 		end
 	end
 
+	function Talented:IsEditLockedForTemplate(template, pet)
+		if type(template) ~= "table" then
+			return false
+		end
+		if template.inspect_name then
+			return true
+		end
+		if template.talentGroup then
+			local group = template.talentGroup
+			local unspent = GetUnspentTalentPoints(nil, pet, group)
+			if type(unspent) ~= "number" then
+				unspent = GetUnspentTalentPoints()
+			end
+			if type(unspent) ~= "number" or unspent <= 0 then
+				return true
+			end
+		end
+		return false
+	end
+
 	function Talented:GetGlobalDB()
 		local db = self.db
 		if type(db) ~= "table" then
@@ -2520,7 +2540,11 @@ do
 		self:HookSetItemRef()
 		self:HookChatHyperlinkShow()
 		self:SecureHook("UpdateMicroButtons")
+		self:HookInspectAPI()
 		self:CheckHookInspectUI()
+		if type(self.EnsureInspectButtons) == "function" then
+			self:EnsureInspectButtons()
+		end
 
 		self:RegisterEvent("ADDON_LOADED")
 		self:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -2555,6 +2579,10 @@ do
 		self:HookTalentFrameToggle()
 		self:HookCloseSpecialWindows()
 		self:HookCloseAllWindows()
+		self:HookInspectAPI()
+		if type(self.EnsureInspectButtons) == "function" then
+			self:EnsureInspectButtons()
+		end
 		local E = ElvUI and unpack(ElvUI)
 		if E then
 			-- spec tabs
@@ -4767,6 +4795,8 @@ do
 		local total = 0
 		local info = Talented:UncompressSpellData(template.class)
 		local at_cap = Talented:IsTemplateAtCap(template)
+		local editLocked = Talented:IsEditLockedForTemplate(template, self.pet)
+		local editing = (self.mode == "edit" and not editLocked)
 		for tab, tree in ipairs(info) do
 			local count = 0
 			local frame = self:GetUIElement(tab)
@@ -4803,9 +4833,9 @@ do
 						else
 							local color = GRAY_FONT_COLOR
 							local state = Talented:GetTalentState(template, tab, index)
-							if state == "empty" and (at_cap or self.mode == "view") then
-								state = "unavailable"
-							end
+								if state == "empty" and (at_cap or not editing) then
+									state = "unavailable"
+								end
 							if state == "unavailable" then
 								button.texture:SetDesaturated(1)
 								button.slot:SetVertexColor(0.65, 0.65, 0.65)
@@ -4828,10 +4858,10 @@ do
 							if req then
 								local ecolor = color
 								if ecolor == GREEN_FONT_COLOR then
-									if self.mode == "edit" then
-										local s = Talented:GetTalentState(template, tab, req)
-										if s ~= "full" then
-											ecolor = RED_FONT_COLOR
+										if editing then
+											local s = Talented:GetTalentState(template, tab, req)
+											if s ~= "full" then
+												ecolor = RED_FONT_COLOR
 										end
 									else
 										ecolor = NORMAL_FONT_COLOR
@@ -4870,11 +4900,11 @@ do
 				SetFormattedTextSafe(frame.name, L["%s (%d)"], Talented.tabdata[template.class][tab].name, count)
 				total = total + count
 				local clear = frame.clear
-				if self.mode ~= "edit" or count <= 0 or self.spec then
-					clear:Hide()
-				else
-					clear:Show()
-				end
+					if not editing or count <= 0 or self.spec then
+						clear:Hide()
+					else
+						clear:Show()
+					end
 			end
 		end
 		local maxpoints = GetMaxPoints(nil, self.pet, self.spec)
@@ -4951,17 +4981,17 @@ do
 		elseif colorbutton then
 			colorbutton:Hide()
 		end
-		local cb, activate = self.frame.checkbox, self.frame.bactivate
-		if cb then
-			if template.talentGroup == GetActiveTalentGroup() or template.pet then
-				if activate then
-					activate:Hide()
-				end
-				cb:Show()
-				SetTextSafe(cb.label, L["Edit talents"])
-				cb.tooltip = L["Toggle editing of talents."]
-			elseif template.talentGroup then
-				cb:Hide()
+			local cb, activate = self.frame.checkbox, self.frame.bactivate
+			if cb then
+				if template.talentGroup == GetActiveTalentGroup() or template.pet then
+					if activate then
+						activate:Hide()
+					end
+					cb:Show()
+					SetTextSafe(cb.label, L["Edit talents"])
+					cb.tooltip = L["Toggle editing of talents."]
+				elseif template.talentGroup then
+					cb:Hide()
 				if activate then
 					activate.talentGroup = template.talentGroup
 					activate:Show()
@@ -4971,11 +5001,22 @@ do
 					activate:Hide()
 				end
 				cb:Show()
-				SetTextSafe(cb.label, L["Edit template"])
-				cb.tooltip = L["Toggle edition of the template."]
+					SetTextSafe(cb.label, L["Edit template"])
+					cb.tooltip = L["Toggle edition of the template."]
+				end
+				cb:SetChecked(editing and true or false)
+				if editLocked then
+					cb:Disable()
+					if cb.label and type(cb.label.SetTextColor) == "function" then
+						cb.label:SetTextColor(0.5, 0.5, 0.5)
+					end
+				else
+					cb:Enable()
+					if cb.label and type(cb.label.SetTextColor) == "function" then
+						cb.label:SetTextColor(NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b)
+					end
+				end
 			end
-			cb:SetChecked(self.mode == "edit")
-		end
 		local targetname = self.frame.targetname
 		if targetname then
 			if template.pet then
@@ -5126,6 +5167,7 @@ do
 
 	function TalentView:UpdateTalent(tab, index, offset, bypassConfirm)
 		if self.mode ~= "edit" then return end
+		if Talented:IsEditLockedForTemplate(self.template, self.pet) then return end
 		if self.spec then
 			-- Applying talent
 			if offset > 0 then
@@ -5164,7 +5206,7 @@ do
 
 	function TalentView:ClearTalentTab(t)
 		local template = self.template
-		if template and not template.talentGroup then
+		if template and not template.talentGroup and not template.inspect_name then
 			local tab = template[t]
 			for index, value in ipairs(tab) do
 				tab[index] = 0
@@ -6313,10 +6355,10 @@ do
 		return true
 	end
 
-	function Talented:RequestInspectData(unit, reason)
-		if not unit then
-			unit = self:GetInspectUnit()
-		end
+		function Talented:RequestInspectData(unit, reason)
+			if not unit then
+				unit = self:GetInspectUnit()
+			end
 		if not unit then
 			return false
 		end
@@ -6326,14 +6368,15 @@ do
 		if type(CanInspect) == "function" and not CanInspect(unit) then
 			return false
 		end
-		local name = UnitName(unit)
-		if not name or name == "" then
-			return false
-		end
-		local level = tonumber(UnitLevel(unit)) or 0
-		if level > 0 and level < 10 then
-			return false
-		end
+			local name = UnitName(unit)
+			if not name or name == "" then
+				return false
+			end
+			self._inspectUnitHint = unit
+			local level = tonumber(UnitLevel(unit)) or 0
+			if level > 0 and level < 10 then
+				return false
+			end
 		if type(GetTime) == "function" then
 			local now = GetTime()
 			if self._inspectLastRequestName == name and type(self._inspectLastRequestAt) == "number" and (now - self._inspectLastRequestAt) < INSPECT_REQUEST_THROTTLE then
@@ -6353,9 +6396,11 @@ do
 			prev_twinspect_show = _G.TWInspectTalents_Show
 			_G.TWInspectTalents_Show = twinspect_show_proxy
 		end
-		if type(_G.NotifyInspect) == "function" then
-			pcall(_G.NotifyInspect, unit)
-		end
+			if type(_G.NotifyInspect) == "function" then
+				self._suppressInspectAPISecureHook = true
+				pcall(_G.NotifyInspect, unit)
+				self._suppressInspectAPISecureHook = nil
+			end
 		local requested = false
 		if type(_G.SendAddonMessage) == "function" and HasTurtleInspectAPI() then
 			local _, class = UnitClass(unit)
@@ -6370,8 +6415,37 @@ do
 			pcall(_G.SendAddonMessage, prefix, "INSShowTalents", "GUILD")
 			requested = true
 		end
-		return requested
-	end
+			return requested
+		end
+
+		function Talented:HookInspectAPI()
+			if self._inspectAPIHooked then
+				return
+			end
+			self._inspectAPIHooked = true
+			self:SecureHook("NotifyInspect")
+			self:SecureHook("InspectUnit")
+		end
+
+		function Talented:NotifyInspect(unit)
+			if self._suppressInspectAPISecureHook then
+				return
+			end
+			if type(unit) == "string" and unit ~= "" then
+				self._inspectUnitHint = unit
+			end
+			self:RequestInspectData(unit or self:GetInspectUnit(), "notify-hook")
+		end
+
+		function Talented:InspectUnit(unit)
+			if self._suppressInspectAPISecureHook then
+				return
+			end
+			if type(unit) == "string" and unit ~= "" then
+				self._inspectUnitHint = unit
+			end
+			self:RequestInspectData(unit or self:GetInspectUnit(), "inspect-hook")
+		end
 
 	function Talented:HookInspectUI()
 		if InspectFrameTab3 and not prev_script then
@@ -6420,29 +6494,31 @@ do
 		self._suppressInspectTalentsUIUntil = nil
 	end
 
-	function Talented:CheckHookInspectUI()
-		self:RegisterEvent("CHAT_MSG_ADDON")
-		if not InspectFrameTab3 and not IsAddOnLoaded("Blizzard_InspectUI") then
-			return
-		end
-		if self.db.profile.hook_inspect_ui then
-			self:RegisterEvent("INSPECT_TALENT_READY")
-			self:RegisterEvent("PLAYER_TARGET_CHANGED")
-			if IsAddOnLoaded("Blizzard_InspectUI") then
-				self:HookInspectUI()
-			end
-		else
-			self:UnregisterEvent("INSPECT_TALENT_READY")
-			self:UnregisterEvent("PLAYER_TARGET_CHANGED")
-			if IsAddOnLoaded("Blizzard_InspectUI") then
-				self:UnhookInspectUI()
+		function Talented:CheckHookInspectUI()
+			self:RegisterEvent("CHAT_MSG_ADDON")
+			if self.db.profile.hook_inspect_ui then
+				self:RegisterEvent("INSPECT_TALENT_READY")
+				self:RegisterEvent("PLAYER_TARGET_CHANGED")
+				if InspectFrameTab3 or IsAddOnLoaded("Blizzard_InspectUI") then
+					self:HookInspectUI()
+				end
+			else
+				self:UnregisterEvent("INSPECT_TALENT_READY")
+				self:UnregisterEvent("PLAYER_TARGET_CHANGED")
+				if InspectFrameTab3 or IsAddOnLoaded("Blizzard_InspectUI") then
+					self:UnhookInspectUI()
+				end
 			end
 		end
-	end
 
 	function Talented:ADDON_LOADED(addon)
 		self:HookSetItemRef()
 		self:HookChatHyperlinkShow()
+		if addon == "Blizzard_InspectUI" or addon == "SuperInspect" then
+			if type(self.EnsureInspectButtons) == "function" then
+				self:EnsureInspectButtons()
+			end
+		end
 		if addon == "Blizzard_TalentUI" then
 			self:HookTalentFrameToggle()
 			return
@@ -6453,18 +6529,24 @@ do
 		end
 	end
 
-	function Talented:GetInspectUnit()
-		if InspectFrame and InspectFrame.unit then
-			return InspectFrame.unit
+		function Talented:GetInspectUnit()
+			if InspectFrame and InspectFrame.unit then
+				return InspectFrame.unit
+			end
+			if self._inspectUnitHint and type(UnitExists) == "function" and UnitExists(self._inspectUnitHint) and type(CanInspect) == "function" and CanInspect(self._inspectUnitHint) then
+				return self._inspectUnitHint
+			end
+			if type(UnitExists) == "function" and UnitExists("target") and type(CanInspect) == "function" and CanInspect("target") then
+				return "target"
+			end
+			return nil
 		end
-		if type(UnitExists) == "function" and UnitExists("target") and type(CanInspect) == "function" and CanInspect("target") then
-			return "target"
-		end
-		return nil
-	end
 
 	function Talented:INSPECT_TALENT_READY()
 		self:UpdateInspectTemplate()
+		if type(self.UpdateInspectButtons) == "function" then
+			self:UpdateInspectButtons()
+		end
 	end
 
 	function Talented:PLAYER_TARGET_CHANGED()
@@ -6472,9 +6554,15 @@ do
 			return
 		end
 		if not InspectFrame or not InspectFrame:IsShown() then
+			if type(self.UpdateInspectButtons) == "function" then
+				self:UpdateInspectButtons()
+			end
 			return
 		end
 		self:RequestInspectData(self:GetInspectUnit(), "target-changed")
+		if type(self.UpdateInspectButtons) == "function" then
+			self:UpdateInspectButtons()
+		end
 	end
 
 	function Talented:CHAT_MSG_ADDON(prefix, message, channel, sender)

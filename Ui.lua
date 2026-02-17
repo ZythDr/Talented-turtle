@@ -329,6 +329,7 @@ do
 		button.Enable = Button_Enable
 		button.Disable = Button_Disable
 		button.SetButtonState = Button_SetButtonState
+		Button_SetState(button, "NORMAL")
 
 		table.insert(Talented.uielements, button)
 		return button
@@ -553,6 +554,12 @@ do
 
 		frame:SetScript("OnShow", function()
 			Talented:RegisterEvent("MODIFIER_STATE_CHANGED")
+			if frame.bactions and type(frame.bactions.SetButtonState) == "function" then
+				frame.bactions:SetButtonState("NORMAL")
+			end
+			if frame.bmode and type(frame.bmode.SetButtonState) == "function" then
+				frame.bmode:SetButtonState("NORMAL")
+			end
 			if type(SetButtonPulse) == "function" and TalentMicroButton then
 				SetButtonPulse(TalentMicroButton, 0, 1)
 			end
@@ -1254,16 +1261,6 @@ do
 		picker:SetColorRGB(r, g, b)
 		picker.func = apply
 		picker.cancelFunc = cancel
-		-- Keep the native color picker above Talented's dialog frame.
-		if type(picker.SetFrameStrata) == "function" then
-			picker:SetFrameStrata("FULLSCREEN_DIALOG")
-		end
-		if type(picker.SetToplevel) == "function" then
-			picker:SetToplevel(true)
-		end
-		if _G.TalentedFrame and type(picker.SetFrameLevel) == "function" then
-			picker:SetFrameLevel(_G.TalentedFrame:GetFrameLevel() + 30)
-		end
 		if picker.Hide then
 			picker:Hide()
 		end
@@ -1271,6 +1268,13 @@ do
 			_G.ShowUIPanel(picker)
 		elseif picker.Show then
 			picker:Show()
+		end
+		-- Keep native picker internals intact, but force a higher strata than Talented.
+		if type(picker.SetFrameStrata) == "function" then
+			picker:SetFrameStrata("DIALOG")
+		end
+		if type(picker.Raise) == "function" then
+			picker:Raise()
 		end
 	end
 
@@ -2419,7 +2423,7 @@ do
 			}
 
 		entry = self:GetNamedMenu("Export")
-		entry.text = L["Export Template ..."]
+		entry.text = L["Export template ..."]
 		entry.func = nil
 		entry.hasArrow = true
 		entry.menuList = self:GetNamedMenu("exporters")
@@ -2539,7 +2543,7 @@ do
 			local exporterCount = index - 1
 			local exportEntry = self:GetNamedMenu("Export")
 			if exporterCount <= 0 then
-				exportEntry.text = L["Export Template ..."]
+				exportEntry.text = L["Export template ..."]
 				exportEntry.func = nil
 				exportEntry.hasArrow = nil
 				exportEntry.menuList = nil
@@ -2547,14 +2551,14 @@ do
 				exportEntry.disabled = true
 			elseif exporterCount == 1 then
 				local single = exporters[1]
-				exportEntry.text = L["Export Template ..."]
+				exportEntry.text = L["Export template ..."]
 				exportEntry.func = Export_Template
 				exportEntry.hasArrow = nil
 				exportEntry.menuList = nil
 				exportEntry.arg1 = single.arg1
 				exportEntry.disabled = nil
 			else
-				exportEntry.text = L["Export Template ..."]
+				exportEntry.text = L["Export template ..."]
 				exportEntry.func = nil
 				exportEntry.hasArrow = true
 				exportEntry.menuList = exporters
