@@ -11,6 +11,11 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 
 ## Changelog
 
+### v2.0-r20260217-5
+- Added a new "Dim tree backgrounds" display option.
+- Reworked dimming implementation to tint tree artwork directly instead of using a black overlay texture.
+- Fixed intermittent black/blocky artifacts on tree backgrounds caused by overlay clipping/transparent regions.
+
 ### v2.0-r20260217-4
 - Major internal refactor: split monolithic `Talented.lua` into dedicated modules (`Core`, `Spell`, `View`, `EditMode`, `Check`, `Encode`, `ViewMode`, `Tips`, `Apply`, `Learn`, `Chat`, `Comm`, `InspectUI`).
 - Preserved Vanilla 1.12 compatibility while modularizing (added safe wrappers/fallbacks where required for missing talent-group APIs).

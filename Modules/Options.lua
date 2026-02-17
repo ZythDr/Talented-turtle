@@ -14,6 +14,7 @@ Talented.defaults = {
 			offset = 48,
 			scale = 1,
 				add_bottom_offset = true,
+				dim_tree_background = false,
 				framepos = {},
 				hook_inspect_ui = true,
 				template_tooltip_level = 60
@@ -138,6 +139,13 @@ Talented.options = {
 					desc = L["Add some space below the talents to show the bottom information."],
 					arg = "ReLayout",
 					order = 12
+				},
+				dim_tree_background = {
+					type = "toggle",
+					name = L["Dim tree backgrounds"],
+					desc = L["Add a dark overlay over talent tree artwork to improve icon readability."],
+					arg = "UpdateView",
+					order = 13
 				}
 			}
 		},

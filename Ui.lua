@@ -335,6 +335,8 @@ do
 	end
 
 	local function CreateBaseButtons(parent)
+		local TEMPLATE_NAME_WIDTH = 248 -- 50% wider than previous 165
+
 		local function Frame_OnEnter(self)
 			self = self or this
 			if not self then
@@ -373,7 +375,7 @@ do
 		local e = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
 		e:SetFontObject(ChatFontNormal)
 		e:SetTextColor(GREEN_FONT_COLOR.r, GREEN_FONT_COLOR.g, GREEN_FONT_COLOR.b)
-		e:SetSize(165, 13)
+		e:SetSize(TEMPLATE_NAME_WIDTH, 13)
 		e:SetAutoFocus(false)
 		e:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 		e:SetScript("OnEditFocusLost", function(self)
@@ -393,7 +395,7 @@ do
 		local color = CreateFrame("Button", nil, parent)
 		color:SetSize(14, 14)
 		color:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-		color:SetPoint("LEFT", e, "RIGHT", 6, 0)
+		color:SetPoint("LEFT", e, "RIGHT", 4, 0)
 		color:SetScript("OnClick", function(self, button)
 			button = button or _G.arg1 or "LeftButton"
 			local template = Talented.template
@@ -419,7 +421,7 @@ do
 
 		local targetname = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 		targetname:SetJustifyH("LEFT")
-		targetname:SetSize(185, 13)
+		targetname:SetSize(TEMPLATE_NAME_WIDTH, 13)
 		targetname:SetPoint("LEFT", parent.bmode, "RIGHT", 14, 0)
 		parent.targetname = targetname
 
@@ -585,10 +587,13 @@ do
 		self:LoadFramePosition(frame)
 		self:SetFrameLock(frame)
 
-		self.base = frame
-		self.CreateBaseFrame = function(self)
-			return self.base
-		end
+			self.base = frame
+			if type(self.RunSkinCallbacks) == "function" then
+				self:RunSkinCallbacks("base-created")
+			end
+			self.CreateBaseFrame = function(self)
+				return self.base
+			end
 		return frame
 	end
 
@@ -688,6 +693,12 @@ do
 		t:SetPoint("TOPLEFT", frame.topleft, "BOTTOMRIGHT")
 		frame.bottomright = t
 
+		-- Optional dim layer over the tree artwork (kept below branch/icon layers).
+		local dim = CreateTexture(frame, "BACKGROUND")
+		dim:SetTexture(0, 0, 0, 0)
+		dim:SetAllPoints(frame)
+		frame.dim = dim
+
 		local fs = frame:CreateFontString(nil, "BACKGROUND", "GameFontNormal")
 		fs:SetPoint("TOP", frame, "TOP", 0, -4)
 		fs:SetJustifyH("CENTER")
@@ -726,6 +737,9 @@ do
 			tree = NewTalentFrame(parent)
 		end
 		Layout(tree, width, height)
+		if self.ApplyTreeBackgroundDim then
+			self:ApplyTreeBackgroundDim(tree)
+		end
 		return tree
 	end
 end

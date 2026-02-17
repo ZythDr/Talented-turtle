@@ -118,6 +118,36 @@ end
 
 local GetNumTalentTabs = CompatGetNumTalentTabs
 local GetTalentTabInfo = CompatGetTalentTabInfo
+
+function Talented:GetTreeBackgroundDimAlpha()
+	local p = self.db and self.db.profile
+	if p and p.dim_tree_background then
+		return 0.3
+	end
+	return 0
+end
+
+function Talented:ApplyTreeBackgroundDim(frame)
+	if not frame then
+		return
+	end
+	local dim = self:GetTreeBackgroundDimAlpha()
+	local shade = 1 - dim
+	local function ApplyShade(tex)
+		if tex and type(tex.SetVertexColor) == "function" then
+			tex:SetVertexColor(shade, shade, shade, 1)
+		end
+	end
+	ApplyShade(frame.topleft)
+	ApplyShade(frame.topright)
+	ApplyShade(frame.bottomleft)
+	ApplyShade(frame.bottomright)
+	-- Keep legacy overlay hidden to avoid black block artifacts on transparent
+	-- regions of the tree art.
+	if frame.dim and type(frame.dim.Hide) == "function" then
+		frame.dim:Hide()
+	end
+end
 local GetUnspentTalentPoints = CompatGetUnspentTalentPoints
 local GetActiveTalentGroup = CompatGetActiveTalentGroup
 
@@ -264,9 +294,12 @@ do
 		self.frame:SetSize(table.getn(talents) * LAYOUT_SIZE_X + LAYOUT_BASE_X * 2, size_y + top_offset + bottom_offset)
 		self.frame:SetScale(Talented.db.profile.scale)
 
-		self.class = class
-		self:Update()
-	end
+			self.class = class
+			self:Update()
+			if type(Talented.RunSkinCallbacks) == "function" then
+				Talented:RunSkinCallbacks("view-set-class")
+			end
+		end
 
 	function TalentView:SetTemplate(template, target)
 		if template then
@@ -288,10 +321,13 @@ do
 		end
 
 		self.spec = template.talentGroup
-		self:SetClass(template.class)
+			self:SetClass(template.class)
+			if type(Talented.RunSkinCallbacks) == "function" then
+				Talented:RunSkinCallbacks("view-set-template")
+			end
 
-		return self:Update()
-	end
+			return self:Update()
+		end
 
 	function TalentView:ClearTarget()
 		if self.target then
@@ -427,6 +463,7 @@ do
 					end
 				end
 			if frame then
+				Talented:ApplyTreeBackgroundDim(frame)
 				SetFormattedTextSafe(frame.name, L["%s (%d)"], Talented.tabdata[template.class][tab].name, count)
 				total = total + count
 				local clear = frame.clear
