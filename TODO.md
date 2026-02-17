@@ -6,3 +6,4 @@
 - ~~Test applying talents~~ Done
 - ~~Cleanup/optimization~~ Done
 - ~~Add saved set color customization~~ Done
+- Further Cleanup (noticed a lot of leftovers from WotLK Talented)
