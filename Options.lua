@@ -15,7 +15,6 @@ Talented.defaults = {
 			scale = 1,
 				add_bottom_offset = true,
 				framepos = {},
-				restore_bars = false,
 				hook_inspect_ui = true,
 				template_tooltip_level = 60
 			},
@@ -108,24 +107,17 @@ Talented.options = {
 					disabled = true,
 					order = 8
 				},
-				restore_bars = {
-					type = "toggle",
-					name = L["Restore bars with ABS"],
-					desc = L["Disabled on this Vanilla build."],
-					disabled = true,
-					order = 9
-				},
 				header3 = {
 					type = "header",
 					name = L["Display options"],
-					order = 10
+					order = 9
 				},
 				offset = {
 					type = "range",
 					name = L["Icon offset"],
 					desc = L["Distance between icons."],
 					arg = "ReLayout",
-					order = 11,
+					order = 10,
 					min = 42,
 					max = 64,
 					step = 1
@@ -135,7 +127,7 @@ Talented.options = {
 					name = L["Frame scale"],
 					desc = L["Overall scale of the Talented frame."],
 					arg = "ReLayout",
-					order = 12,
+					order = 11,
 					min = 0.5,
 					max = 1.0,
 					step = 0.01
@@ -145,7 +137,7 @@ Talented.options = {
 					name = L["Add bottom offset"],
 					desc = L["Add some space below the talents to show the bottom information."],
 					arg = "ReLayout",
-					order = 13
+					order = 12
 				}
 			}
 		},

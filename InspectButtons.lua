@@ -13,7 +13,7 @@ local function CreateOpenButton(name, parent, x, y)
 	if not button then
 		button = CreateFrame("Button", name, parent, "UIPanelButtonTemplate")
 	end
-	button:SetWidth(90)
+	button:SetWidth(80)
 	button:SetHeight(20)
 	button:SetText(L["Talented"])
 	button:ClearAllPoints()

@@ -207,7 +207,6 @@ if not strsplit then
 end
 local TALENT_SPEC_PRIMARY = _G.TALENT_SPEC_PRIMARY or TALENTS or "Primary"
 local TALENT_SPEC_SECONDARY = _G.TALENT_SPEC_SECONDARY or "Secondary"
-local TALENT_SPEC_PET_PRIMARY = _G.TALENT_SPEC_PET_PRIMARY or PET or "Pet"
 
 local RawGetNumTalentTabs = _G.GetNumTalentTabs
 local RawGetTalentTabInfo = _G.GetTalentTabInfo
@@ -993,8 +992,7 @@ do
 		local _, playerClass = UnitClass("player")
 		if
 			not self:ValidateTemplate(target) or
-				(RAID_CLASS_COLORS[target.class] and target.class ~= playerClass) or
-				(not RAID_CLASS_COLORS[target.class] and (not self.GetPetClass or target.class ~= self:GetPetClass()))
+				(RAID_CLASS_COLORS[target.class] and target.class ~= playerClass)
 		 then
 			self.db.char.targets[targetName] = nil
 			return nil
@@ -1005,20 +1003,12 @@ do
 
 	function Talented:RefreshTargetOverlays(targetName)
 		local _, playerClass = UnitClass("player")
-		local petClass = self.GetPetClass and self:GetPetClass() or nil
-		local petName = UnitName("PET")
 		for _, view in self:IterateTalentViews() do
 			local template = view and view.template
 			if type(template) == "table" then
 				local key
 				local shouldRefresh = false
-				if template.pet then
-					key = petName
-					shouldRefresh = key and (targetName == nil or targetName == key)
-					if shouldRefresh and petClass and template.class ~= petClass then
-						shouldRefresh = false
-					end
-				elseif template.talentGroup then
+				if template.talentGroup then
 					key = template.talentGroup
 					shouldRefresh = (targetName == nil or targetName == key)
 					if shouldRefresh and template.class ~= playerClass then
@@ -2330,18 +2320,14 @@ do
 		end
 		self:PrimeTemplateSpellResolution(template)
 		local view = self:CreateBaseFrame().view
-		local old = view.template
-		if template ~= old then
-			if template.talentGroup then
-				if not template.pet then
+			local old = view.template
+			if template ~= old then
+				if template.talentGroup then
 					view:SetTemplate(template, self:MakeTarget(template.talentGroup))
 				else
-					view:SetTemplate(template, self:MakeTarget(UnitName("PET")))
+					view:SetTemplate(template)
 				end
-			else
-				view:SetTemplate(template)
-			end
-			self.template = template
+				self.template = template
 		end
 		if not template.talentGroup then
 			self.db.profile.last_template = template.name
@@ -2582,11 +2568,6 @@ do
 		self:HookInspectAPI()
 		if type(self.EnsureInspectButtons) == "function" then
 			self:EnsureInspectButtons()
-		end
-		local E = ElvUI and unpack(ElvUI)
-		if E then
-			-- spec tabs
-			E.callbacks:Fire("Talented_SpecTabs")
 		end
 	end
 
@@ -4982,11 +4963,11 @@ do
 			colorbutton:Hide()
 		end
 			local cb, activate = self.frame.checkbox, self.frame.bactivate
-			if cb then
-				if template.talentGroup == GetActiveTalentGroup() or template.pet then
-					if activate then
-						activate:Hide()
-					end
+				if cb then
+					if template.talentGroup == GetActiveTalentGroup() then
+						if activate then
+							activate:Hide()
+						end
 					cb:Show()
 					SetTextSafe(cb.label, L["Edit talents"])
 					cb.tooltip = L["Toggle editing of talents."]
@@ -5017,15 +4998,12 @@ do
 					end
 				end
 			end
-		local targetname = self.frame.targetname
-		if targetname then
-			if template.pet then
-				targetname:Show()
-				SetTextSafe(targetname, TALENT_SPEC_PET_PRIMARY)
-			elseif template.talentGroup then
-				targetname:Show()
-				if template.talentGroup == GetActiveTalentGroup() and target then
-					SetTextSafe(targetname, string.format(L["Target: %s"], target and target.name or ""))
+			local targetname = self.frame.targetname
+			if targetname then
+				if template.talentGroup then
+					targetname:Show()
+					if template.talentGroup == GetActiveTalentGroup() and target then
+						SetTextSafe(targetname, string.format(L["Target: %s"], target and target.name or ""))
 				elseif template.talentGroup == 1 then
 					SetTextSafe(targetname, TALENT_SPEC_PRIMARY)
 				else
@@ -6172,15 +6150,7 @@ do
 				local cp = GetUnspentTalentPoints()
 				Talented:Print(L["Template applied successfully, %d talent points remaining."], cp)
 
-				if self.db.profile.restore_bars then
-					local set = string.lower(string.trim(string.match(template.name or "", "[^-]*") or ""))
-					if set and ABS then
-						ABS:RestoreProfile(set)
-					elseif set and _G.KPack and _G.KPack.ActionBarSaver then
-					_G.KPack.ActionBarSaver:RestoreProfile(set)
-				end
 			end
-		end
 		Talented:OpenTemplate(self:GetActiveSpec())
 		Talented:EnableUI(true)
 
@@ -6670,158 +6640,5 @@ do
 			end
 		end
 		return retval
-	end
-end
-
--------------------------------------------------------------------------------
--- pet.lua
---
-
-do
-	function Talented:FixPetTemplate(template)
-		local data = self:UncompressSpellData(template.class)[1]
-		for index = 1, table.getn(data) - 1 do
-			local info = data[index]
-			local ninfo = data[index + 1]
-			if info.row == ninfo.row and info.column == ninfo.column then
-				local talent = not info.inactive
-				local value = template[1][index] + template[1][index + 1]
-				if talent then
-					template[1][index] = value
-					template[1][index + 1] = 0
-				else
-					template[1][index] = 0
-					template[1][index + 1] = value
-				end
-			end
-		end
-	end
-
-	function Talented:GetPetClass()
-		local _, _, _, texture = GetTalentTabInfo(1, nil, true)
-		return texture and string.sub(texture, 10)
-	end
-
-	local function PetTalentsAvailable()
-		local talentGroup = GetActiveTalentGroup(nil, true)
-		if not talentGroup then return end
-		local has_talent = GetTalentInfo(1, 1, nil, true, talentGroup) or GetTalentInfo(1, 2, nil, true, talentGroup)
-		return has_talent
-	end
-
-	function Talented:PET_TALENT_UPDATE()
-		local class = self:GetPetClass()
-		if not class or not PetTalentsAvailable() then return end
-		self:FixAlternatesTalents(class)
-		local template = self.pet_current
-		if not template then
-			template = {pet = true, name = TALENT_SPEC_PET_PRIMARY}
-			self.pet_current = template
-		end
-		local talentGroup = GetActiveTalentGroup(nil, true)
-		template.talentGroup = talentGroup
-		template.class = class
-		local info = self:UncompressSpellData(class)
-		for tab, tree in ipairs(info) do
-			local ttab = template[tab]
-			if not ttab then
-				ttab = {}
-				template[tab] = ttab
-			end
-			for index in ipairs(tree) do
-				local _, _, _, _, rank = GetTalentInfo(tab, index, nil, true, talentGroup)
-				ttab[index] = rank or 0
-			end
-		end
-		for _, view in self:IterateTalentViews(template) do
-			view:SetClass(class)
-			view:Update()
-		end
-		if self.mode == "apply" then
-			self:CheckTalentPointsApplied()
-		end
-	end
-
-	function Talented:UNIT_PET(unit)
-		if unit == "player" then
-			self:PET_TALENT_UPDATE()
-		end
-	end
-
-	function Talented:InitializePet()
-		self:RegisterEvent("UNIT_PET")
-		self:RegisterEvent("PET_TALENT_UPDATE")
-		self:PET_TALENT_UPDATE()
-	end
-
-	function Talented:FixAlternatesTalents(class)
-		local talentGroup = GetActiveTalentGroup(nil, true)
-		local data = self:UncompressSpellData(class)[1]
-		for index = 1, table.getn(data) - 1 do
-			local info = data[index]
-			local ninfo = data[index + 1]
-			if info.row == ninfo.row and info.column == ninfo.column then
-				local talent = GetTalentInfo(1, index, nil, true, talentGroup)
-				local ntalent = GetTalentInfo(1, index + 1, nil, true, talentGroup)
-				if talent then
-					assert(not ntalent)
-					info.inactive = nil
-					ninfo.inactive = true
-				else
-					assert(ntalent)
-					info.inactive = true
-					ninfo.inactive = nil
-				end
-				for _, template in pairs(self:GetTemplatesDB()) do
-					if template.class == class and not template.code then
-						local value = template[1][index] + template[1][index + 1]
-						if talent then
-							template[1][index] = value
-							template[1][index + 1] = 0
-						else
-							template[1][index] = 0
-							template[1][index + 1] = value
-						end
-					end
-				end
-			end
-		end
-		for _, view in self:IterateTalentViews() do
-			if view.class == class then
-				view:SetClass(view.class, true)
-			end
-		end
-	end
-end
-
--------------------------------------------------------------------------------
--- whpet.lua
---
-
-do
-	local WH_PET_INFO_CLASS = "FFCTTTFTT FF       TT  CFCC  CCTCCC FCF CTTFFF"
-
-	local TALENTED_CLASS_CODE = {
-		F = "Ferocity",
-		C = "Cunning",
-		T = "Tenacity",
-		Ferocity = "t",
-		Cunning = "w",
-		Tenacity = "*",
-		["t"] = "Ferocity",
-		["w"] = "Cunning",
-		["*"] = "Tenacity"
-	}
-
-	function Talented:GetPetClassByFamily(index)
-		return TALENTED_CLASS_CODE[string.sub(WH_PET_INFO_CLASS, index, index)]
-	end
-
-	Talented.importers["/%??petcalc#"] = function(self, url, dst)
-		return
-	end
-
-	function Talented:ExportWhpetTemplate(template, url)
-		return
 	end
 end
