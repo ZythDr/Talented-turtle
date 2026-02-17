@@ -2305,6 +2305,12 @@ do
 		end
 
 	function Talented:CreateActionMenu()
+		if not self.template then
+			local active = type(self.GetActiveSpec) == "function" and self:GetActiveSpec() or nil
+			if active then
+				self.template = active
+			end
+		end
 		local menu = self:GetNamedMenu("Action")
 
 		local menuList = self:GetNamedMenu("NewTemplates")
@@ -2410,7 +2416,7 @@ do
 					Talented.base.view:Update()
 				end
 			end
-		entry.arg2 = self.template.name
+		entry.arg2 = self.template and self.template.name or nil
 		menu[table.getn(menu) + 1] = entry
 
 		menu[table.getn(menu) + 1] = self:GetNamedMenu("separator")
@@ -2487,6 +2493,9 @@ do
 
 	function Talented:MakeActionMenu()
 		local menu = self:CreateActionMenu()
+		if not self.template then
+			return menu
+		end
 		local templateTalentGroup, activeTalentGroup = self.template.talentGroup, GetActiveTalentGroup()
 		local _, playerClass = UnitClass("player")
 		local restricted = (self.template.class ~= playerClass)
