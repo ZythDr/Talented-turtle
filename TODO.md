@@ -2,7 +2,7 @@
 
 - ~~Builds from Inspected players~~ Done
 - ~~Fix Shift-click to link talents in chat~~ Done
-- Test `Send to...` feature
-- Test applying talents
+- ~~Test `Send to...` feature~~ Done
+- ~~Test applying talents~~ Done
 - ~~Cleanup/optimization~~ Done
 - ~~Add saved set color customization~~ Done
