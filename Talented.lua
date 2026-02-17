@@ -97,6 +97,10 @@ local L = setmetatable({}, {__index = function(t, k)
 	return k
 end})
 _G.TalentedLocale = L
+local TALENTED_WHISPER_PREFIX = "\001TLDCOMM\001"
+local TALENTED_TURTLE_WHISPER_PREFIX = "TW_CHAT_MSG_WHISPER"
+local TALENTED_TURTLE_COMM_TAG = "TALENTEDCOMM:"
+local TALENTED_LFT_COMM_TAG = "TLDLFT:"
 
 function Talented:Serialize(a, b)
 	return tostring(a or "") .. "\031" .. tostring(b or "")
@@ -115,12 +119,46 @@ function Talented:RegisterComm(prefix)
 end
 
 function Talented:SendCommMessage(prefix, message, distribution, target)
-	-- Vanilla fallback: addon comm is not guaranteed, so only whisper when available.
-	if type(SendAddonMessage) ~= "function" then
+	-- Vanilla/Turtle: addon whispers are not supported reliably.
+	if distribution ~= "WHISPER" or not target or target == "" then
 		return
 	end
-	if distribution == "WHISPER" and target and target ~= "" then
-		SendAddonMessage(prefix or self.commPrefix or "Talented", tostring(message or ""), "WHISPER", target)
+
+	local commPrefix = prefix or self.commPrefix or "Talented"
+	local payload = tostring(message or "")
+	local addonSent = nil
+
+	-- Preferred Turtle transport: targeted addon whisper emulation.
+	if type(SendAddonMessage) == "function" then
+		local addonPrefix = TALENTED_TURTLE_WHISPER_PREFIX .. "<" .. tostring(target) .. ">"
+		local addonMessage = TALENTED_TURTLE_COMM_TAG .. tostring(commPrefix) .. "\031" .. payload
+		local ok, sent = pcall(SendAddonMessage, addonPrefix, addonMessage, "GUILD")
+		if ok and (sent == 1 or sent == true) then
+			addonSent = true
+		end
+	end
+
+	-- Turtle LFT broadcast-style fallback with explicit recipient in payload.
+	-- Commonly hidden by users, and already used by many addons on Turtle.
+	if addonSent ~= true and type(SendChatMessage) == "function" and type(GetChannelName) == "function" then
+		local channelId = GetChannelName("LookingForGroup")
+		if not channelId or channelId == 0 then
+			channelId = GetChannelName("LFT")
+		end
+		if channelId and channelId ~= 0 then
+			local lftPayload = TALENTED_LFT_COMM_TAG .. string.lower(tostring(target)) .. "\031" .. tostring(commPrefix) .. "\031" .. payload
+			local ok = pcall(SendChatMessage, lftPayload, "CHANNEL", nil, channelId)
+			if ok then
+				addonSent = true
+			end
+		end
+	end
+
+	-- Turtle/Vanilla fallback: emulate direct comm via tagged whisper.
+	-- Keep this for robustness when addon channel delivery is unavailable.
+	if type(SendChatMessage) == "function" and (addonSent ~= 1 and addonSent ~= true) then
+		local whisper = TALENTED_WHISPER_PREFIX .. tostring(commPrefix) .. "\031" .. payload
+		pcall(SendChatMessage, whisper, "WHISPER", nil, target)
 	end
 end
 
@@ -2439,10 +2477,46 @@ do
 		end
 	end
 
+	function Talented:HookChatWhisperFilter()
+		if type(_G.ChatFrame_OnEvent) ~= "function" then
+			return
+		end
+		if not self._talentedChatFrameOnEventOriginal then
+			self._talentedChatFrameOnEventOriginal = _G.ChatFrame_OnEvent
+		end
+		if not self._talentedChatFrameOnEventProxy then
+			self._talentedChatFrameOnEventProxy = function(frame, event, a1, a2, a3, a4, a5, a6, a7, a8, a9)
+				if event == "CHAT_MSG_WHISPER" or event == "CHAT_MSG_WHISPER_INFORM" then
+					local message = a1
+					if type(message) ~= "string" then
+						message = _G.arg1
+					end
+					if type(message) == "string" and string.find(message, TALENTED_WHISPER_PREFIX, 1, true) == 1 then
+						return
+					end
+				end
+				if event == "CHAT_MSG_CHANNEL" then
+					local message = a1
+					if type(message) ~= "string" then
+						message = _G.arg1
+					end
+					if type(message) == "string" and string.find(message, TALENTED_LFT_COMM_TAG, 1, true) == 1 then
+						return
+					end
+				end
+				return Talented._talentedChatFrameOnEventOriginal(frame, event, a1, a2, a3, a4, a5, a6, a7, a8, a9)
+			end
+		end
+		if _G.ChatFrame_OnEvent ~= self._talentedChatFrameOnEventProxy then
+			_G.ChatFrame_OnEvent = self._talentedChatFrameOnEventProxy
+		end
+	end
+
 	function Talented:OnEnable()
 		self:HookTalentFrameToggle()
 		self:HookCloseSpecialWindows()
 		self:HookCloseAllWindows()
+		self:HookChatWhisperFilter()
 		self:HookSetItemRef()
 		self:HookChatHyperlinkShow()
 		self:SecureHook("UpdateMicroButtons")
@@ -2452,10 +2526,14 @@ do
 		self:RegisterEvent("PLAYER_ENTERING_WORLD")
 		self:RegisterEvent("CHARACTER_POINTS_CHANGED")
 		self:RegisterEvent("PLAYER_TALENT_UPDATE")
+		self:RegisterEvent("CHAT_MSG_WHISPER")
+		self:RegisterEvent("CHAT_MSG_CHANNEL")
 	end
 
 	function Talented:OnDisable()
 		self:UnhookInspectUI()
+		self:UnregisterEvent("CHAT_MSG_WHISPER")
+		self:UnregisterEvent("CHAT_MSG_CHANNEL")
 		if _G.CloseSpecialWindows == self._talentedCloseSpecialWindowsProxy and type(self._talentedCloseSpecialWindowsOriginal) == "function" then
 			_G.CloseSpecialWindows = self._talentedCloseSpecialWindowsOriginal
 		end
@@ -2467,6 +2545,9 @@ do
 		end
 		if _G.ChatFrame_OnHyperlinkShow == self._talentedChatHyperlinkProxy and type(self._talentedChatHyperlinkOriginal) == "function" then
 			_G.ChatFrame_OnHyperlinkShow = self._talentedChatHyperlinkOriginal
+		end
+		if _G.ChatFrame_OnEvent == self._talentedChatFrameOnEventProxy and type(self._talentedChatFrameOnEventOriginal) == "function" then
+			_G.ChatFrame_OnEvent = self._talentedChatFrameOnEventOriginal
 		end
 	end
 
@@ -5399,16 +5480,63 @@ end
 --
 
 do
+	local recentComm = {}
+	local function IsDuplicateComm(sender, message)
+		if type(sender) ~= "string" then
+			sender = ""
+		end
+		local key = tostring(sender) .. "\031" .. tostring(message or "")
+		local now = type(GetTime) == "function" and GetTime() or 0
+		local last = recentComm[key]
+		if type(last) == "number" and (now - last) <= 2 then
+			return true
+		end
+		recentComm[key] = now
+		return false
+	end
+
+	local function ResolvePopupFrameFromContext(data)
+		if type(data) == "table" and data.which then
+			return data
+		end
+		local widget = _G.this
+		if type(widget) ~= "table" then
+			return nil
+		end
+		if widget.which then
+			return widget
+		end
+		if type(widget.GetParent) == "function" then
+			local parent = widget:GetParent()
+			if type(parent) == "table" and parent.which then
+				return parent
+			end
+		end
+		return nil
+	end
+
 	local function ShowDialog(sender, name, code)
 		StaticPopupDialogs.TALENTED_CONFIRM_SHARE_TEMPLATE = {
 			button1 = YES,
 			button2 = NO,
 			text = L['Do you want to add the template "%s" that %s sent you ?'],
-			OnAccept = function(self)
-				local res, value, class = pcall(Talented.StringToTemplate, Talented, self.code)
+			OnAccept = function(data)
+				local popup = ResolvePopupFrameFromContext(data)
+				local codeValue = type(data) == "table" and data.code or nil
+				local nameValue = type(data) == "table" and data.name or nil
+				if (not codeValue or codeValue == "") and popup then
+					codeValue = popup.code
+				end
+				if (not nameValue or nameValue == "") and popup then
+					nameValue = popup.name
+				end
+				if not codeValue or codeValue == "" then
+					return
+				end
+				local res, value, class = pcall(Talented.StringToTemplate, Talented, codeValue)
 				if res then
-					Talented:ImportFromOther(self.name, {
-						code = self.code,
+					Talented:ImportFromOther(nameValue, {
+						code = codeValue,
 						class = class
 					})
 				else
@@ -5421,18 +5549,63 @@ do
 			interruptCinematic = 1
 		}
 		ShowDialog = function(sender, name, code)
-			local dlg = StaticPopup_Show("TALENTED_CONFIRM_SHARE_TEMPLATE", name, sender)
-			dlg.name = name
-			dlg.code = code
+			local dlg = StaticPopup_Show("TALENTED_CONFIRM_SHARE_TEMPLATE", name, sender, {
+				name = name,
+				code = code
+			})
+			if dlg then
+				dlg.name = name
+				dlg.code = code
+			end
 		end
 		return ShowDialog(sender, name, code)
 	end
 
 	function Talented:OnCommReceived(prefix, message, distribution, sender)
+		if IsDuplicateComm(sender, message) then
+			return
+		end
 		local status, name, code = self:Deserialize(message)
 		if not status then return end
 
 		ShowDialog(sender, name, code)
+	end
+
+	function Talented:CHAT_MSG_WHISPER(message, sender)
+		if type(message) ~= "string" or type(sender) ~= "string" then
+			return
+		end
+		if not string.find(message, TALENTED_WHISPER_PREFIX, 1, true) then
+			return
+		end
+		local payload = string.sub(message, string.len(TALENTED_WHISPER_PREFIX) + 1)
+		local prefix, body = string.match(payload or "", "^(.-)\031(.*)$")
+		if not prefix or not body or prefix == "" then
+			return
+		end
+		self:OnCommReceived(prefix, body, "WHISPER", sender)
+	end
+
+	function Talented:CHAT_MSG_CHANNEL(message, sender)
+		if type(message) ~= "string" then
+			return
+		end
+		if not string.find(message, TALENTED_LFT_COMM_TAG, 1, true) then
+			return
+		end
+		local payload = string.sub(message, string.len(TALENTED_LFT_COMM_TAG) + 1)
+		local recipient, prefix, body = string.match(payload or "", "^(.-)\031(.-)\031(.*)$")
+		if not recipient or recipient == "" or not prefix or prefix == "" or not body then
+			return
+		end
+		local selfName = type(UnitName) == "function" and UnitName("player") or nil
+		if type(selfName) ~= "string" or selfName == "" then
+			return
+		end
+		if string.lower(selfName) ~= string.lower(recipient) then
+			return
+		end
+		self:OnCommReceived(prefix, body, "WHISPER", sender)
 	end
 
 	function Talented:ExportTemplateToUser(name)
@@ -6306,6 +6479,14 @@ do
 
 	function Talented:CHAT_MSG_ADDON(prefix, message, channel, sender)
 		if type(prefix) ~= "string" or type(message) ~= "string" then
+			return
+		end
+		if string.find(prefix, TALENTED_TURTLE_WHISPER_PREFIX, 1, true) and string.find(message, TALENTED_TURTLE_COMM_TAG, 1, true) == 1 then
+			local payload = string.sub(message, string.len(TALENTED_TURTLE_COMM_TAG) + 1)
+			local commPrefix, body = string.match(payload or "", "^(.-)\031(.*)$")
+			if commPrefix and commPrefix ~= "" and body then
+				self:OnCommReceived(commPrefix, body, "WHISPER", sender)
+			end
 			return
 		end
 		if self:HandleTurtleTalentTooltipRequest(prefix, message, channel, sender) then
