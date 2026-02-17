@@ -528,6 +528,67 @@ do
 		return close
 	end
 
+	function Talented:SyncTalentViewFrameLevels(view)
+		if type(view) ~= "table" or type(view.GetUIElement) ~= "function" then
+			return
+		end
+		local holder = view.frame
+		if type(holder) ~= "table" or type(holder.GetFrameLevel) ~= "function" then
+			return
+		end
+		local template = view.template
+		if type(template) ~= "table" or type(template.class) ~= "string" then
+			return
+		end
+		local trees = self:UncompressSpellData(template.class)
+		if type(trees) ~= "table" then
+			return
+		end
+
+		local baseLevel = holder:GetFrameLevel() or 0
+		-- Keep tree art/lines at holder level and icon buttons one level above.
+		-- This preserves intra-tree ordering without sinking elements behind backdrop.
+		local treeLevel = baseLevel
+		local buttonLevel = baseLevel + 1
+		-- Keep arrow overlay on the same frame level as buttons.
+		-- Arrow textures already use draw layer "OVERLAY", so tips render above icons
+		-- without escaping above unrelated addon windows.
+		local overlayLevel = buttonLevel
+		local clearLevel = baseLevel + 2
+
+		for tab, tree in ipairs(trees) do
+			local frame = view:GetUIElement(tab)
+			if frame and type(frame.SetFrameLevel) == "function" then
+				frame:SetFrameLevel(treeLevel)
+				if frame.overlay and type(frame.overlay.SetFrameLevel) == "function" then
+					frame.overlay:SetFrameLevel(overlayLevel)
+				end
+				if frame.clear and type(frame.clear.SetFrameLevel) == "function" then
+					frame.clear:SetFrameLevel(clearLevel)
+				end
+			end
+			if type(tree) == "table" then
+				for index, talent in ipairs(tree) do
+					if not talent.inactive then
+						local button = view:GetUIElement(tab, index)
+						if button and type(button.SetFrameLevel) == "function" then
+							button:SetFrameLevel(buttonLevel)
+						end
+					end
+				end
+			end
+		end
+	end
+
+	function Talented:SyncAllTalentFrameLevels()
+		if type(self.IterateTalentViews) ~= "function" then
+			return
+		end
+		for _, view in self:IterateTalentViews() do
+			self:SyncTalentViewFrameLevels(view)
+		end
+	end
+
 	function Talented:CreateBaseFrame()
 		local frame = _G.TalentedFrame or CreateFrame("Frame", "TalentedFrame", UIParent)
 		frame:Hide()
@@ -567,7 +628,16 @@ do
 			if type(PlaySound) == "function" then
 				PlaySound("TalentScreenOpen")
 			end
+			frame._talentedLastFrameLevel = nil
+			Talented:SyncAllTalentFrameLevels()
 			Talented:UpdateMicroButtons()
+		end)
+		frame:SetScript("OnUpdate", function(self)
+			local level = self:GetFrameLevel()
+			if level ~= self._talentedLastFrameLevel then
+				self._talentedLastFrameLevel = level
+				Talented:SyncAllTalentFrameLevels()
+			end
 		end)
 		frame:SetScript("OnHide", function()
 			if type(PlaySound) == "function" then
@@ -630,6 +700,17 @@ do
 
 		frame.close = self:CreateCloseButton(frame)
 		frame.view = self.TalentView:new(frame, "alt")
+		frame:SetScript("OnShow", function(self)
+			self._talentedLastFrameLevel = nil
+			Talented:SyncAllTalentFrameLevels()
+		end)
+		frame:SetScript("OnUpdate", function(self)
+			local level = self:GetFrameLevel()
+			if level ~= self._talentedLastFrameLevel then
+				self._talentedLastFrameLevel = level
+				Talented:SyncAllTalentFrameLevels()
+			end
+		end)
 		self:LoadFramePosition(frame)
 		self:SetFrameLock(frame)
 
@@ -777,7 +858,7 @@ do
 	end
 
 	local function NewButton(parent)
-		local button = CreateFrame("Button", nil, parent.child or parent)
+		local button = CreateFrame("Button", nil, parent)
 		-- ItemButtonTemplate (minus Count and Slot)
 		button:SetSize(37, 37)
 		local t = CreateTexture(button, "BORDER")
@@ -816,10 +897,11 @@ do
 
 	function Talented:MakeButton(parent)
 		local button = buttons:next()
+		local p = parent
 		if button then
-			button:SetParent(parent)
+			button:SetParent(p)
 		else
-			button = NewButton(parent)
+			button = NewButton(p)
 		end
 		return button
 	end
@@ -1432,9 +1514,41 @@ do
 			return self.optionsFrame
 		end
 
+		local strataOrder = {
+			"BACKGROUND",
+			"LOW",
+			"MEDIUM",
+			"HIGH",
+			"DIALOG",
+			"FULLSCREEN",
+			"FULLSCREEN_DIALOG",
+			"TOOLTIP"
+		}
+		local function NextStrata(strata)
+			local current = tostring(strata or "DIALOG")
+			for i, value in ipairs(strataOrder) do
+				if value == current then
+					return strataOrder[min(i + 1, table.getn(strataOrder))]
+				end
+			end
+			return "FULLSCREEN"
+		end
+
 		local frame = CreateFrame("Frame", "TalentedOptionsFrame", UIParent)
-		frame:SetFrameStrata("DIALOG")
+		frame:SetFrameStrata("FULLSCREEN")
 		frame:SetToplevel(true)
+		local function RaiseOptionsFrame(self)
+			local base = _G.TalentedFrame or Talented.base
+			if base and type(base.GetFrameStrata) == "function" then
+				self:SetFrameStrata(NextStrata(base:GetFrameStrata()))
+			else
+				self:SetFrameStrata("FULLSCREEN")
+			end
+			if type(self.Raise) == "function" then
+				self:Raise()
+			end
+		end
+		frame:SetScript("OnShow", RaiseOptionsFrame)
 		frame:EnableMouse(true)
 		frame:SetMovable(true)
 		frame:RegisterForDrag("LeftButton")
@@ -1618,11 +1732,32 @@ do
 
 		self.optionsFrame = frame
 		self:LoadFramePosition(frame)
+		RaiseOptionsFrame(frame)
 		return frame
 	end
 
 	function Talented:OpenOptionsFrame()
 		local frame = self:CreateOptionsFrame()
+		local base = _G.TalentedFrame or self.base
+		if base and type(base.GetFrameStrata) == "function" then
+			local strata = base:GetFrameStrata()
+			local next = "FULLSCREEN"
+			if strata == "BACKGROUND" then next = "LOW"
+			elseif strata == "LOW" then next = "MEDIUM"
+			elseif strata == "MEDIUM" then next = "HIGH"
+			elseif strata == "HIGH" then next = "DIALOG"
+			elseif strata == "DIALOG" then next = "FULLSCREEN"
+			elseif strata == "FULLSCREEN" then next = "FULLSCREEN_DIALOG"
+			elseif strata == "FULLSCREEN_DIALOG" then next = "TOOLTIP"
+			elseif strata == "TOOLTIP" then next = "TOOLTIP"
+			end
+			frame:SetFrameStrata(next)
+		else
+			frame:SetFrameStrata("FULLSCREEN")
+		end
+		if type(frame.Raise) == "function" then
+			frame:Raise()
+		end
 		self:RefreshOptionsFrame()
 		if not frame:IsVisible() then
 			frame:Show()

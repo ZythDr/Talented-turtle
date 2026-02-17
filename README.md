@@ -11,6 +11,15 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 
 ## Changelog
 
+### v2.0-r20260217-6
+- Stabilized Talented frame element z-order on focus swaps (prevents talent icons/branches from getting stuck above unrelated frames after foreground/background changes).
+- Normalized pooled talent button parenting to the tree frame for consistent layering behavior.
+- Improved Talented Options window stacking by making it open one strata above the main Talented frame.
+- Updated display defaults/ranges:
+  - Icon offset default: `60`
+  - Icon offset range: `48..64` with step `2`
+  - Frame scale max: `1.5`
+
 ### v2.0-r20260217-5
 - Added a new "Dim tree backgrounds" display option.
 - Reworked dimming implementation to tint tree artwork directly instead of using a black overlay texture.
