@@ -1,7 +1,7 @@
 ## Interface: 11200
 ## Title: Talented
 ## Notes: The Talent Template Editor (Vanilla/Turtle). Requires SuperWoW + nampower.
-## Author: Jerry (Kader Edition)
+## Author: ZythDr
 ## Version: v2.1-r20260218-2
 ## SavedVariables: TalentedDB
 ## X-Category: Interface Enhancements
