@@ -11,6 +11,12 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 
 ## Changelog
 
+### v2.1-r20260218-2
+- Reworked tree dimming to a unified, stable overlay path to avoid random dark/bright tile artifacts.
+- Fixed chat-link spell resolution for edge cases where a linked talent could resolve to an incorrect spell tooltip.
+- Added inspect-tab integration improvements and guards when inspecting players below level 10.
+- Improved code documentation in regards to frame layer order as to prevent future regressions.
+
 ### v2.1-r20260218-1
 - Added a new inspect integration option: `Use Inspect tab` (uses a real `InspectFrameTab4` on default Blizzard InspectFrame instead of the floating Talented button).
 - Stabilized InspectFrame tab wiring for Vanilla/Turtle panel templates (fixed tab resize/signature issues and tab registration behavior).

@@ -132,20 +132,62 @@ function Talented:ApplyTreeBackgroundDim(frame)
 		return
 	end
 	local dim = self:GetTreeBackgroundDimAlpha()
-	local shade = 1 - dim
 	local function ApplyShade(tex)
-		if tex and type(tex.SetVertexColor) == "function" then
-			tex:SetVertexColor(shade, shade, shade, 1)
+		if not tex then
+			return
+		end
+		if type(tex.SetVertexColor) == "function" then
+			tex:SetVertexColor(1, 1, 1, 1)
+		end
+		if type(tex.SetAlpha) == "function" then
+			tex:SetAlpha(1)
 		end
 	end
 	ApplyShade(frame.topleft)
 	ApplyShade(frame.topright)
 	ApplyShade(frame.bottomleft)
 	ApplyShade(frame.bottomright)
-	-- Keep legacy overlay hidden to avoid black block artifacts on transparent
-	-- regions of the tree art.
-	if frame.dim and type(frame.dim.Hide) == "function" then
-		frame.dim:Hide()
+
+	-- Disable old per-tree overlay path.
+	if frame._talentedDimOverlay and type(frame._talentedDimOverlay.Hide) == "function" then
+		frame._talentedDimOverlay:Hide()
+	end
+
+	-- One shared overlay across all visible trees for this view.
+	local view = frame.view
+	local root = view and view.frame
+	local overlay = root and root._talentedTreeDimOverlay
+	if root and not overlay and type(root.CreateTexture) == "function" then
+		overlay = root:CreateTexture(nil, "ARTWORK")
+		root._talentedTreeDimOverlay = overlay
+		overlay:SetTexture(0, 0, 0, 1)
+		overlay:SetDrawLayer("ARTWORK", 0)
+		if type(overlay.SetBlendMode) == "function" then
+			overlay:SetBlendMode("BLEND")
+		end
+	end
+	if overlay and view then
+		local left = tonumber(view._treeDimLeft) or 4
+		local top = tonumber(view._treeDimTop) or 24
+		local width = tonumber(view._treeDimWidth) or 0
+		local height = tonumber(view._treeDimHeight) or 0
+		if width > 0 and height > 0 and type(overlay.ClearAllPoints) == "function" and type(overlay.SetPoint) == "function" then
+			overlay:ClearAllPoints()
+			overlay:SetPoint("TOPLEFT", root, "TOPLEFT", left, -top)
+			overlay:SetPoint("BOTTOMRIGHT", root, "TOPLEFT", left + width, -(top + height))
+		end
+		if dim > 0 and width > 0 and height > 0 then
+			if type(overlay.SetAlpha) == "function" then
+				overlay:SetAlpha(dim)
+			end
+			if type(overlay.Show) == "function" then
+				overlay:Show()
+			end
+		else
+			if type(overlay.Hide) == "function" then
+				overlay:Hide()
+			end
+		end
 	end
 end
 local GetUnspentTalentPoints = CompatGetUnspentTalentPoints
@@ -185,6 +227,26 @@ do
 		self.frame = frame
 		self.name = name
 		self.elements = {}
+		self.externalTreeTitles = {}
+	end
+
+	local function EnsureExternalTreeTitle(self, tab, treeFrame)
+		if type(self.externalTreeTitles) ~= "table" then
+			self.externalTreeTitles = {}
+		end
+		local fs = self.externalTreeTitles[tab]
+		if not fs and self.frame and type(self.frame.CreateFontString) == "function" then
+			fs = self.frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+			self.externalTreeTitles[tab] = fs
+		end
+		if fs and treeFrame then
+			fs:ClearAllPoints()
+			fs:SetPoint("TOP", treeFrame, "TOP", 0, -4)
+			fs:SetJustifyH("CENTER")
+			fs:SetWidth(treeFrame:GetWidth() or 0)
+			fs:Show()
+		end
+		return fs
 	end
 
 	local function element_key(a, b, c)
@@ -258,6 +320,9 @@ do
 			frame.tab = tab
 			frame.view = self
 			frame.pet = self.pet
+			if frame.name and type(frame.name.Hide) == "function" then
+				frame.name:Hide()
+			end
 
 			local background = Talented.tabdata[class][tab].background
 			frame.topleft:SetTexture("Interface\\TalentFrame\\" .. background .. "-TopLeft")
@@ -290,7 +355,20 @@ do
 			end
 
 			frame:SetPoint("TOPLEFT", (tab - 1) * LAYOUT_SIZE_X + LAYOUT_BASE_X, -top_offset)
+			EnsureExternalTreeTitle(self, tab, frame)
 		end
+		if type(self.externalTreeTitles) == "table" then
+			for i = table.getn(talents) + 1, table.getn(self.externalTreeTitles) do
+				local fs = self.externalTreeTitles[i]
+				if fs and type(fs.Hide) == "function" then
+					fs:Hide()
+				end
+			end
+		end
+		self._treeDimLeft = LAYOUT_BASE_X
+		self._treeDimTop = top_offset
+		self._treeDimWidth = table.getn(talents) * LAYOUT_SIZE_X
+		self._treeDimHeight = size_y
 		self.frame:SetSize(table.getn(talents) * LAYOUT_SIZE_X + LAYOUT_BASE_X * 2, size_y + top_offset + bottom_offset)
 		self.frame:SetScale(Talented.db.profile.scale)
 
@@ -462,11 +540,16 @@ do
 						end
 					end
 				end
-			if frame then
-				Talented:ApplyTreeBackgroundDim(frame)
-				SetFormattedTextSafe(frame.name, L["%s (%d)"], Talented.tabdata[template.class][tab].name, count)
-				total = total + count
-				local clear = frame.clear
+				if frame then
+					Talented:ApplyTreeBackgroundDim(frame)
+					local fs = EnsureExternalTreeTitle(self, tab, frame)
+					if fs then
+						SetFormattedTextSafe(fs, L["%s (%d)"], Talented.tabdata[template.class][tab].name, count)
+					else
+						SetFormattedTextSafe(frame.name, L["%s (%d)"], Talented.tabdata[template.class][tab].name, count)
+					end
+					total = total + count
+					local clear = frame.clear
 					if not editing or count <= 0 or self.spec then
 						clear:Hide()
 					else

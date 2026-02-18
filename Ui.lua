@@ -546,26 +546,30 @@ do
 		end
 
 		local baseLevel = holder:GetFrameLevel() or 0
-		-- Keep tree art/lines at holder level and icon buttons one level above.
-		-- This preserves intra-tree ordering without sinking elements behind backdrop.
+		-- Final z-order contract (keep in sync with NewBranch/NewArrow/ApplyTreeBackgroundDim):
+		-- tree frame: background artwork + dim region anchor
+		-- frame.overlay: branch/line bodies (below talent buttons, above dim)
+		-- button frames: talent icons/borders/ranks
+		-- frame.arrowoverlay: arrow tips (above buttons for visual clarity)
 		local treeLevel = baseLevel
 		local buttonLevel = baseLevel + 1
-		-- Keep arrow overlay on the same frame level as buttons.
-		-- Arrow textures already use draw layer "OVERLAY", so tips render above icons
-		-- without escaping above unrelated addon windows.
-		local overlayLevel = buttonLevel
+		local overlayLevel = treeLevel
+		local arrowOverlayLevel = buttonLevel + 1
 		local clearLevel = baseLevel + 2
 
 		for tab, tree in ipairs(trees) do
 			local frame = view:GetUIElement(tab)
 			if frame and type(frame.SetFrameLevel) == "function" then
 				frame:SetFrameLevel(treeLevel)
-				if frame.overlay and type(frame.overlay.SetFrameLevel) == "function" then
-					frame.overlay:SetFrameLevel(overlayLevel)
-				end
-				if frame.clear and type(frame.clear.SetFrameLevel) == "function" then
-					frame.clear:SetFrameLevel(clearLevel)
-				end
+					if frame.overlay and type(frame.overlay.SetFrameLevel) == "function" then
+						frame.overlay:SetFrameLevel(overlayLevel)
+					end
+					if frame.arrowoverlay and type(frame.arrowoverlay.SetFrameLevel) == "function" then
+						frame.arrowoverlay:SetFrameLevel(arrowOverlayLevel)
+					end
+					if frame.clear and type(frame.clear.SetFrameLevel) == "function" then
+						frame.clear:SetFrameLevel(clearLevel)
+					end
 			end
 			if type(tree) == "table" then
 				for index, talent in ipairs(tree) do
@@ -774,12 +778,6 @@ do
 		t:SetPoint("TOPLEFT", frame.topleft, "BOTTOMRIGHT")
 		frame.bottomright = t
 
-		-- Optional dim layer over the tree artwork (kept below branch/icon layers).
-		local dim = CreateTexture(frame, "BACKGROUND")
-		dim:SetTexture(0, 0, 0, 0)
-		dim:SetAllPoints(frame)
-		frame.dim = dim
-
 		local fs = frame:CreateFontString(nil, "BACKGROUND", "GameFontNormal")
 		fs:SetPoint("TOP", frame, "TOP", 0, -4)
 		fs:SetJustifyH("CENTER")
@@ -789,6 +787,10 @@ do
 		overlay:SetAllPoints(frame)
 
 		frame.overlay = overlay
+
+		local arrowoverlay = CreateFrame("Frame", nil, frame)
+		arrowoverlay:SetAllPoints(frame)
+		frame.arrowoverlay = arrowoverlay
 
 		local clear = CreateFrame("Button", nil, frame)
 		frame.clear = clear
@@ -924,7 +926,12 @@ do
 	local branches = Talented.Pool:new()
 
 	local function NewBranch(parent)
-		local t = parent:CreateTexture(nil, "BORDER")
+		local host = (parent and parent.overlay) or parent
+		local t = host:CreateTexture(nil, "OVERLAY")
+		if type(t.SetDrawLayer) == "function" then
+			-- Branch bodies must stay above dim overlay, but below talent buttons.
+			t:SetDrawLayer("OVERLAY", 0)
+		end
 		t:SetTexture(TalentedTexture("branches-normal"))
 		t:SetSize(32, 32)
 		t:SetVertexColor(NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b)
@@ -935,9 +942,10 @@ do
 	end
 
 	function Talented:MakeBranch(parent)
+		local host = (parent and parent.overlay) or parent
 		local branch = branches:next()
 		if branch then
-			branch:SetParent(parent)
+			branch:SetParent(host)
 		else
 			branch = NewBranch(parent)
 		end
@@ -953,7 +961,12 @@ do
 	local arrows = Talented.Pool:new()
 
 	local function NewArrow(parent)
-		local t = parent:CreateTexture(nil, "OVERLAY")
+		local t = parent:CreateTexture(nil, "ARTWORK")
+		if type(t.SetDrawLayer) == "function" then
+			-- Arrow tips are hosted on frame.arrowoverlay (higher frame level), so this
+			-- draw-layer only needs stable ordering within that host.
+			t:SetDrawLayer("ARTWORK", -1)
+		end
 		t:SetTexture(TalentedTexture("arrows-normal"))
 		t:SetSize(32, 32)
 		t:SetVertexColor(NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b)
@@ -965,10 +978,11 @@ do
 
 	function Talented:MakeArrow(parent)
 		local arrow = arrows:next()
+		local host = (parent and parent.arrowoverlay) or (parent and parent.overlay) or parent
 		if arrow then
-			arrow:SetParent(parent.overlay)
+			arrow:SetParent(host)
 		else
-			arrow = NewArrow(parent.overlay)
+			arrow = NewArrow(host)
 		end
 		return arrow
 	end

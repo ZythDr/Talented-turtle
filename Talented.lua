@@ -526,6 +526,15 @@ local function RawSpellTextScore(text)
 	if string.find(compact, "%$") then
 		score = score - 5
 	end
+	local lower = string.lower(compact)
+	-- Strongly de-prioritize non-player-facing helper/aura notes that sometimes
+	-- collide with real talent spell names/ranks in spell records.
+	if string.find(lower, "designer note", 1, true)
+		or string.find(lower, "design note", 1, true)
+		or string.find(lower, "only purpose of this aura", 1, true)
+		or string.find(lower, "mark a player", 1, true) then
+		score = score - 800
+	end
 	return score
 end
 

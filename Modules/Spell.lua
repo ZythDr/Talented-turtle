@@ -694,6 +694,36 @@ do
 		return true
 	end
 
+	local function IsSuspiciousTalentSpellText(text)
+		if type(text) ~= "string" or text == "" then
+			return false
+		end
+		local lower = string.lower(text)
+		return string.find(lower, "designer note", 1, true) ~= nil
+			or string.find(lower, "design note", 1, true) ~= nil
+			or string.find(lower, "only purpose of this aura", 1, true) ~= nil
+			or string.find(lower, "mark a player", 1, true) ~= nil
+	end
+
+	local function IsSuspiciousTalentSpellID(spell)
+		if type(spell) ~= "number" or spell <= 0 then
+			return false
+		end
+		local recDesc = GetSpellRecDescription(spell)
+		if IsSuspiciousTalentSpellText(recDesc) then
+			return true
+		end
+		local getField = _G.GetSpellRecField
+		if type(getField) == "function" then
+			local tooltip = getField(spell, "tooltip")
+			local description = getField(spell, "description")
+			if IsSuspiciousTalentSpellText(tooltip) or IsSuspiciousTalentSpellText(description) then
+				return true
+			end
+		end
+		return false
+	end
+
 	function Talented:GetTalentSpellID(class, tab, index, rank)
 		local tree = self:UncompressSpellData(class)
 		local talent = tree and tree[tab] and tree[tab][index]
@@ -723,6 +753,13 @@ do
 		end
 		local _, playerClass = UnitClass("player")
 		if class ~= playerClass then
+			local remapped = self:ResolveTalentRankSpellID(class, tab, index, rank, nil, true)
+			if type(remapped) == "number" then
+				spell = remapped
+			end
+		elseif IsSuspiciousTalentSpellID(spell) then
+			-- Player-class dumps can occasionally contain helper/aura marker IDs.
+			-- Re-run resolver and prefer a non-note spell where possible.
 			local remapped = self:ResolveTalentRankSpellID(class, tab, index, rank, nil, true)
 			if type(remapped) == "number" then
 				spell = remapped
@@ -1277,4 +1314,3 @@ do
 			_G.ChatFrame_OnHyperlinkShow = self._talentedChatHyperlinkProxy
 		end
 	end
-
