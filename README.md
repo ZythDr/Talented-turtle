@@ -11,6 +11,13 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 
 ## Changelog
 
+### v2.1-r20260218-1
+- Added a new inspect integration option: `Use Inspect tab` (uses a real `InspectFrameTab4` on default Blizzard InspectFrame instead of the floating Talented button).
+- Stabilized InspectFrame tab wiring for Vanilla/Turtle panel templates (fixed tab resize/signature issues and tab registration behavior).
+- Improved inspect button/tab visibility switching logic between default InspectFrame and SuperInspect integration paths.
+- Added a safe Vanilla fallback for missing `GetActiveTalentGroup` in inspect-open flow.
+- Added a guard for sub-level-10 inspected targets: Talented now avoids opening and prints a clear informational message.
+
 ### v2.0-r20260217-6
 - Stabilized Talented frame element z-order on focus swaps (prevents talent icons/branches from getting stuck above unrelated frames after foreground/background changes).
 - Normalized pooled talent button parenting to the tree frame for consistent layering behavior.

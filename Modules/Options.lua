@@ -17,6 +17,7 @@ Talented.defaults = {
 				dim_tree_background = false,
 				framepos = {},
 				hook_inspect_ui = true,
+				inspect_open_as_tab = false,
 				template_tooltip_level = 60
 			},
 	global = {templates = {}},
@@ -101,24 +102,31 @@ Talented.options = {
 					arg = "CheckHookInspectUI",
 					order = 7
 				},
+				inspect_open_as_tab = {
+					type = "toggle",
+					name = L["Use Inspect tab"],
+					desc = L["Use a tab-like Talented control on the default InspectFrame instead of a button."],
+					arg = "EnsureInspectButtons",
+					order = 8
+				},
 				show_url_in_chat = {
 					type = "toggle",
 					name = L["Output URL in Chat"],
 					desc = L["Disabled on this Vanilla build. Export uses the selectable URL dialog."],
 					disabled = true,
-					order = 8
+					order = 9
 				},
 				header3 = {
 					type = "header",
 					name = L["Display options"],
-					order = 9
+					order = 10
 				},
 				offset = {
 					type = "range",
 					name = L["Icon offset"],
 					desc = L["Distance between icons."],
 					arg = "ReLayout",
-					order = 10,
+					order = 11,
 					min = 48,
 					max = 64,
 					step = 2
@@ -128,7 +136,7 @@ Talented.options = {
 					name = L["Frame scale"],
 					desc = L["Overall scale of the Talented frame."],
 					arg = "ReLayout",
-					order = 11,
+					order = 12,
 					min = 0.5,
 					max = 1.5,
 					step = 0.01
@@ -138,14 +146,14 @@ Talented.options = {
 					name = L["Add bottom offset"],
 					desc = L["Add some space below the talents to show the bottom information."],
 					arg = "ReLayout",
-					order = 12
+					order = 13
 				},
 				dim_tree_background = {
 					type = "toggle",
 					name = L["Dim tree backgrounds"],
 					desc = L["Add a dark overlay over talent tree artwork to improve icon readability."],
 					arg = "UpdateView",
-					order = 13
+					order = 14
 				}
 			}
 		},
