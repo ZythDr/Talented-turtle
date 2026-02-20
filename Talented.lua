@@ -538,6 +538,10 @@ local function RawSpellTextScore(text)
 	return score
 end
 
+local function ScoreSpellRecText(text)
+	return RawSpellTextScore(text)
+end
+
 local function ChooseBestSpellText(primary, secondary)
 	local pscore = RawSpellTextScore(primary)
 	local sscore = RawSpellTextScore(secondary)
