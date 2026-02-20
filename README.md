@@ -11,6 +11,11 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 
 ## Changelog
 
+### v2.1-r20260219-1
+- Fixed a runtime error in spell-record tooltip scoring (`attempt to call a nil value`).
+- Improved tree title layering so talent tree headers reliably render above tree artwork with updated frame-level settings.
+- Finalized layer/strata sync refinements for branch bodies, arrow tips, and talent buttons under the stabilized tree rendering model.
+
 ### v2.1-r20260218-2
 - Reworked tree dimming to a unified, stable overlay path to avoid random dark/bright tile artifacts.
 - Fixed chat-link spell resolution for edge cases where a linked talent could resolve to an incorrect spell tooltip.
