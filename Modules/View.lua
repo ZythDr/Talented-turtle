@@ -235,11 +235,17 @@ do
 			self.externalTreeTitles = {}
 		end
 		local fs = self.externalTreeTitles[tab]
-		if not fs and self.frame and type(self.frame.CreateFontString) == "function" then
-			fs = self.frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		local host = (treeFrame and treeFrame.overlay) or self.frame
+		if not fs and host and type(host.CreateFontString) == "function" then
+			fs = host:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 			self.externalTreeTitles[tab] = fs
 		end
 		if fs and treeFrame then
+			-- Keep tree titles on the same per-tree overlay host so they track
+			-- SyncTalentViewFrameLevels() overlayLevel ordering.
+			if host and type(fs.SetParent) == "function" and fs:GetParent() ~= host then
+				fs:SetParent(host)
+			end
 			fs:ClearAllPoints()
 			fs:SetPoint("TOP", treeFrame, "TOP", 0, -4)
 			fs:SetJustifyH("CENTER")

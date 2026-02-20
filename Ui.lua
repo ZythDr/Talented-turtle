@@ -551,10 +551,10 @@ do
 		-- frame.overlay: branch/line bodies (below talent buttons, above dim)
 		-- button frames: talent icons/borders/ranks
 		-- frame.arrowoverlay: arrow tips (above buttons for visual clarity)
-		local treeLevel = baseLevel
-		local buttonLevel = baseLevel + 1
+		local treeLevel = baseLevel + 1
+		local buttonLevel = baseLevel + 2
 		local overlayLevel = treeLevel
-		local arrowOverlayLevel = buttonLevel + 1
+		local arrowOverlayLevel = buttonLevel + 2
 		local clearLevel = baseLevel + 2
 
 		for tab, tree in ipairs(trees) do
@@ -597,7 +597,7 @@ do
 		local frame = _G.TalentedFrame or CreateFrame("Frame", "TalentedFrame", UIParent)
 		frame:Hide()
 
-		frame:SetFrameStrata("DIALOG")
+		frame:SetFrameStrata("HIGH")
 		frame:EnableMouse(true)
 		frame:SetToplevel(true)
 		frame:SetSize(50, 50)
