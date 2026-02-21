@@ -11,6 +11,17 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 
 ## Changelog
 
+### v2.3-r20260221-1
+- Improved inspect-template point budgeting UX:
+  - `Remaining points` now uses the inspected player level budget.
+  - top-right spent/max counter now also uses the inspected player level budget.
+  - `Remaining points` is hidden for non-live, non-inspect templates.
+- Fixed tree title layering to stay above tree artwork with the current HIGH-strata frame model.
+- Fixed spell-record tooltip scoring crash (`attempt to call a nil value` at `Talented.lua:813`).
+
+<details>
+<summary>Full Changelog</summary>
+
 ### v2.2-r20260219-2
 - Fixed a runtime error in spell-record tooltip scoring (`attempt to call a nil value`).
 - Improved tree title layering so talent tree headers reliably render above tree artwork with updated frame-level settings.
@@ -81,3 +92,5 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 - Turtlecraft talents import/export support added.
 - Tooltip system extensively adapted for Turtle + SuperWoW/nampower.
 - Inspect template capture, class-colored menus, template colors, and UI behavior improvements.
+
+</details>

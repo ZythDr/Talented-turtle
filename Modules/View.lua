@@ -299,6 +299,23 @@ do
 		return total + GetUnspentTalentPoints(inspect, pet, spec)
 	end
 
+	local function GetLevelTalentBudget(level, pet)
+		if pet then
+			return nil
+		end
+		level = tonumber(level)
+		if type(level) ~= "number" then
+			return nil
+		end
+		if level < 10 then
+			return 0
+		end
+		if level > 60 then
+			level = 60
+		end
+		return level - 9
+	end
+
 	function TalentView:SetClass(class, force)
 		if self.class == class and not force then return end
 		local pet = not RAID_CLASS_COLORS[class]
@@ -564,6 +581,12 @@ do
 			end
 		end
 		local maxpoints = GetMaxPoints(nil, self.pet, self.spec)
+		if template and template.inspect_name and not self.pet then
+			local inspectBudget = GetLevelTalentBudget(template.inspect_level, self.pet)
+			if type(inspectBudget) == "number" then
+				maxpoints = inspectBudget
+			end
+		end
 		local points = self.frame.points
 		if points then
 			if Talented.db.profile.show_level_req then
@@ -584,24 +607,40 @@ do
 		local pointsleft = self.frame.pointsleft
 		if pointsleft then
 			local remaining
-			if template and template.talentGroup and not self.pet and type(RawUnitCharacterPoints) == "function" then
-				local ok, value = pcall(RawUnitCharacterPoints, "player")
-				if ok and type(value) == "number" then
-					remaining = value
+			local showRemaining = false
+			if template and template.talentGroup and not self.pet then
+				showRemaining = true
+				if type(RawUnitCharacterPoints) == "function" then
+					local ok, value = pcall(RawUnitCharacterPoints, "player")
+					if ok and type(value) == "number" then
+						remaining = value
+					end
+				end
+				if type(remaining) ~= "number" then
+					remaining = maxpoints - total
+				end
+			elseif template and template.inspect_name and not self.pet then
+				showRemaining = true
+				local inspectBudget = GetLevelTalentBudget(template.inspect_level, self.pet)
+				if type(inspectBudget) == "number" then
+					remaining = inspectBudget - total
+				else
+					remaining = maxpoints - total
 				end
 			end
-			if type(remaining) ~= "number" then
-				remaining = maxpoints - total
+			if showRemaining then
+				local color = NORMAL_FONT_COLOR
+				if remaining > 0 then
+					color = GREEN_FONT_COLOR
+				elseif remaining < 0 then
+					color = RED_FONT_COLOR
+				end
+				pointsleft:Show()
+				SetFormattedTextSafe(pointsleft.text, L["Remaining points: %d"], remaining)
+				pointsleft.text:SetTextColor(color.r, color.g, color.b)
+			else
+				pointsleft:Hide()
 			end
-			local color = NORMAL_FONT_COLOR
-			if remaining > 0 then
-				color = GREEN_FONT_COLOR
-			elseif remaining < 0 then
-				color = RED_FONT_COLOR
-			end
-			pointsleft:Show()
-			SetFormattedTextSafe(pointsleft.text, L["Remaining points: %d"], remaining)
-			pointsleft.text:SetTextColor(color.r, color.g, color.b)
 		end
 		local edit = self.frame.editname
 		local colorbutton = self.frame.templatecolor
