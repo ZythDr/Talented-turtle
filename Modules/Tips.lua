@@ -185,7 +185,12 @@ do
 				local _, playerClass = UnitClass("player")
 				local usingDefaultTooltip = false
 				local allowNativeTooltip = (class == playerClass and template and template.talentGroup and not IsAltKeyDown())
-				if allowNativeTooltip and type(GameTooltip.SetTalent) == "function" then
+			-- Only use GameTooltip:SetTalent (Blizzard native) in edit mode.
+			-- That API unconditionally appends "Click to learn" which is misleading
+			-- when the player cannot actually learn (no unspent points, view mode).
+			-- The fallback paths (TrySetNativeSpellTooltip, GetTalentDesc with
+			-- useLiveTalentData=true) still give full-quality descriptions without it.
+			if allowNativeTooltip and self.mode == "edit" and type(GameTooltip.SetTalent) == "function" then
 					local ok = pcall(GameTooltip.SetTalent, GameTooltip, tab, index)
 					if ok and (GameTooltip:NumLines() or 0) > 0 then
 						usingDefaultTooltip = true
