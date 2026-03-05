@@ -1007,8 +1007,12 @@ do
 	end
 
 	function Talented:ResolveTemplateSpellIDs(classFilter, maxSpellId)
+		if type(_G.GetNampowerVersion) ~= "function" and type(_G.GetSpellRecField) ~= "function" then
+			self:Print("nampower is not installed on this client. Talent descriptions for other classes require nampower or SuperWoW.")
+			return
+		end
 		if type(_G.GetSpellRecField) ~= "function" then
-			self:Print("nampower GetSpellRecField() is unavailable on this client.")
+			self:Print("nampower GetSpellRecField() is unavailable (older nampower version?).")
 			return
 		end
 		if classFilter and classFilter ~= "" then

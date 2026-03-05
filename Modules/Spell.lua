@@ -344,6 +344,58 @@ do
 		return nil
 	end
 
+	-- Copies real DBC spell IDs from a parsed embedded talent table into an override
+	-- table whose ranks are still sequential-integer placeholders ({1,2,3,...}).
+	-- Called once per class the first time UncompressSpellData resolves a ClassData
+	-- override so that GetTalentSpellID returns valid spell IDs even without SuperWoW
+	-- or nampower.
+	local function MergeEmbeddedSpellIDs(overrideData, compactStr)
+		if type(overrideData) ~= "table" or type(compactStr) ~= "string" then
+			return
+		end
+		local embeddedData = handle_tabs(compactStr)
+		if type(embeddedData) ~= "table" then
+			return
+		end
+		for tab = 1, table.getn(overrideData) do
+			local overrideTab = overrideData[tab]
+			local embeddedTab = embeddedData[tab]
+			if type(overrideTab) ~= "table" or type(embeddedTab) ~= "table" then
+				break
+			end
+			for idx = 1, table.getn(overrideTab) do
+				local overrideTalent = overrideTab[idx]
+				local embeddedTalent = embeddedTab[idx]
+				if type(overrideTalent) == "table" and type(embeddedTalent) == "table" then
+					local oRanks = overrideTalent.ranks
+					local eRanks = embeddedTalent.ranks
+					if type(oRanks) == "table" and type(eRanks) == "table"
+							and table.getn(oRanks) == table.getn(eRanks) then
+						-- Detect sequential placeholder ranks (1, 2, 3, ...)
+						local isPlaceholder = true
+						for r = 1, table.getn(oRanks) do
+							if oRanks[r] ~= r then
+								isPlaceholder = false
+								break
+							end
+						end
+						-- Only overwrite when embedded ranks contain real spell IDs
+						local embHasRealIDs = false
+						for r = 1, table.getn(eRanks) do
+							if eRanks[r] ~= r then
+								embHasRealIDs = true
+								break
+							end
+						end
+						if isPlaceholder and embHasRealIDs then
+							overrideTalent.ranks = eRanks
+						end
+					end
+				end
+			end
+		end
+	end
+
 	function Talented:UncompressSpellData(class)
 		local _, playerClass = UnitClass("player")
 		local data = self.spelldata[class]
@@ -356,8 +408,14 @@ do
 		end
 		data = self.spelldata[class]
 		if class ~= playerClass and type(data) ~= "table" then
+			-- Save the compact string from Data.lua *before* the override replaces it,
+			-- so we can merge the real spell IDs into the ClassData-supplied structure.
+			local rawStr = type(data) == "string" and data or nil
 			local override = ApplyRuntimeClassOverride(self, class)
 			if override then
+				if rawStr then
+					MergeEmbeddedSpellIDs(override, rawStr)
+				end
 				return override
 			end
 		end
@@ -461,7 +519,7 @@ do
 		end
 		tt.lefts, tt.rights = lefts, rights
 		function tt:SetEnchantSpell(spell)
-			if type(self.SetHyperlink) ~= "function" then
+			if type(self.SetHyperlink) ~= "function" or not _G.SUPERWOW_VERSION then
 				return nil
 			end
 			self:SetOwner(_G.TalentedFrame or UIParent, "ANCHOR_NONE")
@@ -615,6 +673,9 @@ do
 		return icon or SPELL_ICON_FALLBACK
 	end
 
+	-- Forward-declare so GetTalentDesc can reference it before the full definition below.
+	local IsSuspiciousTalentSpellText
+
 		function Talented:GetTalentDesc(class, tab, index, rank, useLiveTalentData)
 			if not spellTooltip then
 				spellTooltip = CreateSpellTooltip()
@@ -643,7 +704,7 @@ do
 				return desc
 			end
 			local recDesc = GetSpellRecDescription(spell)
-			if recDesc and recDesc ~= "" then
+			if recDesc and recDesc ~= "" and not IsSuspiciousTalentSpellText(recDesc) then
 				return recDesc
 			end
 			if desc and desc ~= "" then
@@ -694,7 +755,7 @@ do
 		return true
 	end
 
-	local function IsSuspiciousTalentSpellText(text)
+	IsSuspiciousTalentSpellText = function(text)
 		if type(text) ~= "string" or text == "" then
 			return false
 		end
@@ -971,9 +1032,9 @@ do
 			end
 			local name = self:GetTalentName(template.class, tab, index)
 			local sender = UnitName("player")
-			local linkTab, linkIndex = self:AllocateTalentLinkSlot(template.class, tab, index, rank)
-			if linkTab and linkIndex and sender and sender ~= "" then
-				return SafeFormat("|cFF71D5FF|Htalent:%d:%d:%s:|h[%s]|h|r", linkTab, linkIndex, sender, name)
+			local linkTree, linkPacked = self:EncodeCustomTalentLink(template.class, tab, index, rank)
+			if linkTree and linkPacked and sender and sender ~= "" then
+				return SafeFormat("|cFF71D5FF|Htalent:%d:%d:%s:|h[%s]|h|r", linkTree, linkPacked, sender, name)
 			end
 
 			local spell = self:GetTalentSpellID(template.class, tab, index, rank)
@@ -1037,7 +1098,7 @@ do
 			return map and map[spellId]
 		end
 
-		function Talented:ShowTalentTooltip(class, tab, index, rank)
+		function Talented:ShowTalentTooltip(class, tab, index, rank, tooltipFrame)
 			if type(class) ~= "string" then
 				return false
 			end
@@ -1059,11 +1120,13 @@ do
 				rank = maxRank
 			end
 
-			local tooltip = _G.ItemRefTooltip or _G.GameTooltip
+			local tooltip = tooltipFrame or _G.ItemRefTooltip or _G.GameTooltip
 			if not tooltip then
 				return false
 			end
-			if tooltip.SetOwner then
+			-- Only anchor when we own the tooltip; when a frame is passed, the
+			-- caller has already positioned it (e.g. ANCHOR_CURSOR for hover).
+			if not tooltipFrame and tooltip.SetOwner then
 				pcall(tooltip.SetOwner, tooltip, UIParent, "ANCHOR_PRESERVE")
 			end
 			if tooltip.ClearLines then
@@ -1194,7 +1257,7 @@ do
 			return class, tab, index, rank
 		end
 
-		function Talented:ShowCustomTalentHyperlink(link)
+		function Talented:ShowCustomTalentHyperlink(link, tooltipFrame)
 			local tree, packedIndex = ParseNativeTalentHyperlink(link)
 			if not tree then
 				return false
@@ -1206,15 +1269,15 @@ do
 			if not class then
 				return false
 			end
-			return self:ShowTalentTooltip(class, tab, index, rank)
+			return self:ShowTalentTooltip(class, tab, index, rank, tooltipFrame)
 		end
 
-		function Talented:ShowTalentedHyperlink(link)
+		function Talented:ShowTalentedHyperlink(link, tooltipFrame)
 			local class, tab, index, rank = ParseTalentedHyperlink(link)
 			if not class then
 				return false
 			end
-			return self:ShowTalentTooltip(class, tab, index, rank)
+			return self:ShowTalentTooltip(class, tab, index, rank, tooltipFrame)
 		end
 
 		function Talented:HandleSetItemRef(link, text, button)

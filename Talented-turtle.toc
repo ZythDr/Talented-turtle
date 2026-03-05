@@ -1,8 +1,8 @@
 ## Interface: 11200
 ## Title: Talented
-## Notes: The Talent Template Editor (Vanilla/Turtle). Requires SuperWoW + nampower.
+## Notes: The Talent Template Editor (Vanilla/Turtle). Requires nampower or SuperWoW (one or both).
 ## Author: ZythDr
-## Version: v2.3-r20260221-1
+## Version: v2.4-r20260305-1
 ## SavedVariables: TalentedDB
 ## X-Category: Interface Enhancements
 Ace2\AceLibrary\AceLibrary.lua

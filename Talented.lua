@@ -960,6 +960,13 @@ local function ResetSpellRecDescCache()
 	end
 end
 
+-- Canonical DLL presence detection. These flags are set once at load time
+-- using each DLL's official probe so all modules can reference them cleanly.
+-- nampower  : GetNampowerVersion() is the official probe (see nampower SCRIPTS.md)
+-- SuperWoW  : SUPERWOW_VERSION global is the official probe (see SuperWoW Features.txt)
+Talented.hasNamepower = type(_G.GetNampowerVersion) == "function"
+Talented.hasSuperWoW  = _G.SUPERWOW_VERSION ~= nil
+
 Talented._internals = Talented._internals or {}
 Talented._internals.DeepCopy = DeepCopy
 Talented._internals.SerializeLua = SerializeLua

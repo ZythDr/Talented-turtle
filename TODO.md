@@ -6,4 +6,6 @@
 - ~~Test applying talents~~ Done
 - ~~Cleanup/optimization~~ Done
 - ~~Add saved set color customization~~ Done
-- Further Cleanup (noticed a lot of leftovers from WotLK Talented)
+- ~~Further Cleanup (leftovers from WotLK Talented)~~ Done...
+- ~~Fix talent tree background visual issues~~ Done
+- Goblin Brainwashing Device integration (?)
