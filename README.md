@@ -11,6 +11,17 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 
 ## Changelog
 
+### v2.4-r20260305-1
+- Fixed talent tooltips being wrong for other players who click a talent chat link (self-describing `EncodeCustomTalentLink` encoding — no sender-side session state required).
+- Fixed talent descriptions missing for non-player classes: `MergeEmbeddedSpellIDs` now backfills real DBC spell IDs from `Data.lua` into ClassData override tables after `ApplyRuntimeClassOverride`, so `GetTalentSpellID` returns valid IDs without requiring a live nampower scan.
+- Fixed DBC developer-note strings (`Designer Note: only purpose of this aura is to...`) leaking as talent descriptions. Added a fourth filter layer: `GetTalentDesc` now checks `IsSuspiciousTalentSpellText` before returning the nampower `recDesc`, silently skipping helper-spell tooltip text that exists due to internal `effectTriggerSpell`/`modalNextSpell` DBC spell chains.
+- Fixed `SetEnchantSpell` in `CreateSpellLinkTooltip` not checking `SUPERWOW_VERSION` (was only checking `SetHyperlink` presence, inconsistent with `Tips.lua`).
+- Added `Talented.hasNamepower` and `Talented.hasSuperWoW` flags set once at load time using each DLL's official probe (`GetNampowerVersion()` and `SUPERWOW_VERSION` respectively).
+- Improved `ResolveTemplateSpellIDs` error messages to distinguish "nampower not installed" from "older nampower version without `GetSpellRecField`".
+
+<details>
+<summary>Full Changelog</summary>
+
 ### v2.3-r20260221-1
 - Improved inspect-template point budgeting UX:
   - `Remaining points` now uses the inspected player level budget.
@@ -18,9 +29,6 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
   - `Remaining points` is hidden for non-live, non-inspect templates.
 - Fixed tree title layering to stay above tree artwork with the current HIGH-strata frame model.
 - Fixed spell-record tooltip scoring crash (`attempt to call a nil value` at `Talented.lua:813`).
-
-<details>
-<summary>Full Changelog</summary>
 
 ### v2.2-r20260219-2
 - Fixed a runtime error in spell-record tooltip scoring (`attempt to call a nil value`).
