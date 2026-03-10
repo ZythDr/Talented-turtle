@@ -493,15 +493,32 @@ do
 		return durationHints
 	end
 
-	local function IndexSpellRecRecord(index, scores, durationVotes, spellId, getField, getIcon)
+	local function IndexSpellRecRecord(index, scores, candidates, durationVotes, spellId, getField, getIcon)
 		local name = getField(spellId, "name")
 		if type(name) ~= "string" or name == "" then
 			return false
+		end
+		local function addCandidate(key, candidateId)
+			if type(key) ~= "string" or key == "" then
+				return
+			end
+			local bucket = candidates[key]
+			if type(bucket) ~= "table" then
+				bucket = {}
+				candidates[key] = bucket
+			end
+			for i = 1, table.getn(bucket) do
+				if bucket[i] == candidateId then
+					return
+				end
+			end
+			bucket[table.getn(bucket) + 1] = candidateId
 		end
 		local function setBest(key, candidateId, score)
 			if type(key) ~= "string" or key == "" then
 				return
 			end
+			addCandidate(key, candidateId)
 			local prev = scores[key]
 			local prevId = index[key]
 			if prev == nil or score > prev or (score == prev and (not prevId or candidateId < prevId)) then
@@ -567,14 +584,15 @@ do
 		local getIcon = _G.GetSpellIconTexture
 		local index = {}
 		local scores = {}
+		local candidates = {}
 		local durationVotes = {}
 		local indexed = 0
 		for spellId = 1, maxSpellId do
-			if IndexSpellRecRecord(index, scores, durationVotes, spellId, getField, getIcon) then
+			if IndexSpellRecRecord(index, scores, candidates, durationVotes, spellId, getField, getIcon) then
 				indexed = indexed + 1
 			end
 		end
-		return index, indexed, BuildDurationHints(durationVotes)
+		return index, indexed, BuildDurationHints(durationVotes), candidates
 	end
 
 	local RESOLVER_IDS_PER_TICK = 3000
@@ -659,6 +677,7 @@ do
 			getIcon = _G.GetSpellIconTexture,
 			index = {},
 			scores = {},
+			candidates = {},
 			durationVotes = {},
 			indexed = 0
 		}
@@ -680,7 +699,7 @@ do
 		while count < maxPerTick and build.nextSpellId <= build.maxSpellId do
 			local n = 0
 			while n < RESOLVER_IDS_STEP and count < maxPerTick and build.nextSpellId <= build.maxSpellId do
-				if IndexSpellRecRecord(build.index, build.scores, build.durationVotes, build.nextSpellId, build.getField, build.getIcon) then
+				if IndexSpellRecRecord(build.index, build.scores, build.candidates, build.durationVotes, build.nextSpellId, build.getField, build.getIcon) then
 					build.indexed = build.indexed + 1
 				end
 				build.nextSpellId = build.nextSpellId + 1
@@ -696,6 +715,7 @@ do
 				index = build.index,
 				indexed = build.indexed,
 				maxSpellId = build.maxSpellId,
+				candidates = build.candidates,
 				durationHints = BuildDurationHints(build.durationVotes)
 			}
 			self._spellRecIndexBuild = nil
@@ -722,7 +742,7 @@ do
 			return cache and cache.index or nil, cache and cache.indexed or 0
 		end
 		self._spellRecIndexBuild = nil
-		local index, indexed, durationHints = BuildSpellRecIndex(maxSpellId)
+		local index, indexed, durationHints, candidates = BuildSpellRecIndex(maxSpellId)
 		if type(index) ~= "table" then
 			return nil, 0
 		end
@@ -730,6 +750,7 @@ do
 			index = index,
 			indexed = indexed,
 			maxSpellId = maxSpellId,
+			candidates = candidates or {},
 			durationHints = durationHints or {}
 		}
 		ResetSpellRecDescCache()
@@ -763,6 +784,248 @@ do
 			return resolved
 		end
 		return nil
+	end
+
+	local WEBDATA_CLASS_KEYS = {
+		DRUID = "druid",
+		HUNTER = "hunter",
+		MAGE = "mage",
+		PALADIN = "paladin",
+		PRIEST = "priest",
+		ROGUE = "rogue",
+		SHAMAN = "shaman",
+		WARLOCK = "warlock",
+		WARRIOR = "warrior"
+	}
+
+	local resolverTalentTooltip
+
+	local function GetResolverTalentTooltip()
+		if resolverTalentTooltip or type(CreateFrame) ~= "function" then
+			return resolverTalentTooltip
+		end
+		local tt = CreateFrame("GameTooltip", nil, UIParent)
+		local lefts, rights = {}, {}
+		for i = 1, 20 do
+			local left, right = tt:CreateFontString(), tt:CreateFontString()
+			left:SetFontObject(GameFontNormal)
+			right:SetFontObject(GameFontNormal)
+			tt:AddFontStrings(left, right)
+			lefts[i], rights[i] = left, right
+		end
+		tt.lefts, tt.rights = lefts, rights
+		resolverTalentTooltip = tt
+		return tt
+	end
+
+	local function GetTooltipFontStringText(fs)
+		if not fs or type(fs.IsVisible) == "function" and not fs:IsVisible() then
+			return nil
+		end
+		if type(fs.GetText) ~= "function" then
+			return nil
+		end
+		local text = fs:GetText()
+		if type(text) ~= "string" or text == "" then
+			return nil
+		end
+		return text
+	end
+
+	local function GetLiveTalentDescriptionHint(class, tab, index)
+		local _, playerClass = UnitClass("player")
+		if class ~= playerClass then
+			return nil
+		end
+		local tt = GetResolverTalentTooltip()
+		if not tt or type(tt.SetTalent) ~= "function" then
+			return nil
+		end
+		tt:SetOwner(_G.TalentedFrame or UIParent, "ANCHOR_NONE")
+		tt:ClearLines()
+		local ok = pcall(tt.SetTalent, tt, tab, index)
+		if not ok then
+			return nil
+		end
+		local count = (type(tt.NumLines) == "function" and tt:NumLines()) or 0
+		if count < 3 then
+			return nil
+		end
+		local parts = {}
+		for i = 3, count do
+			local left = GetTooltipFontStringText(tt.lefts and tt.lefts[i])
+			local right = GetTooltipFontStringText(tt.rights and tt.rights[i])
+			if left and right then
+				parts[table.getn(parts) + 1] = left .. " " .. right
+			elseif left then
+				parts[table.getn(parts) + 1] = left
+			elseif right then
+				parts[table.getn(parts) + 1] = right
+			end
+		end
+		if table.getn(parts) < 1 then
+			return nil
+		end
+		return table.concat(parts, " ")
+	end
+
+	local function CollectKnownTalentDescriptions(class, tab, index, rank)
+		local hints = {}
+		local seen = {}
+		local function add(text, weight)
+			if type(text) ~= "string" or text == "" or seen[text] then
+				return
+			end
+			seen[text] = true
+			hints[table.getn(hints) + 1] = {text = text, weight = weight or 0}
+		end
+
+		add(GetLiveTalentDescriptionHint(class, tab, index), 1000)
+
+		local calcRoot = _G.TalentedTooltipData
+		local calcClass = calcRoot and calcRoot[class]
+		local calcTree = calcClass and calcClass[tab]
+		local calcTalent = calcTree and calcTree[index]
+		add(calcTalent and calcTalent.desc, 800)
+
+		local web = _G.tp_webdata
+		local classKey = WEBDATA_CLASS_KEYS[class] or string.lower(tostring(class or ""))
+		local classData = web and web[classKey]
+		local tree = classData and classData[tab]
+		local talent = tree and tree[index]
+		add(talent and talent[rank], 500)
+
+		local turtleData = _G.Turtle_TalentsData
+		classData = turtleData and turtleData[class]
+		tree = classData and classData[tab]
+		talent = tree and tree[index]
+		add(talent and talent.desc and talent.desc[rank], 100)
+
+		if table.getn(hints) < 1 then
+			return nil
+		end
+		return hints
+	end
+
+	local function NormalizeTooltipCompareText(text)
+		if type(text) ~= "string" then
+			return nil
+		end
+		text = string.lower(text)
+		text = string.gsub(text, "\r", " ")
+		text = string.gsub(text, "\n", " ")
+		text = string.gsub(text, "[^%w%%%s]", " ")
+		text = string.gsub(text, "%s+", " ")
+		text = string.gsub(text, "^%s+", "")
+		text = string.gsub(text, "%s+$", "")
+		if text == "" then
+			return nil
+		end
+		return text
+	end
+
+	local function ScoreDescriptionMatch(candidateText, expectedText)
+		local candidate = NormalizeTooltipCompareText(candidateText)
+		local expected = NormalizeTooltipCompareText(expectedText)
+		if not candidate or not expected then
+			return -1000
+		end
+		if candidate == expected then
+			return 10000
+		end
+		local score = 0
+		if string.find(candidate, expected, 1, true) or string.find(expected, candidate, 1, true) then
+			score = score + 500
+		end
+		local seen = {}
+		for word in string.gfind(expected, "%S+") do
+			if string.len(word) > 2 and not seen[word] then
+				seen[word] = true
+				if string.find(candidate, word, 1, true) then
+					score = score + 25
+				else
+					score = score - 10
+				end
+			end
+		end
+		return score
+	end
+
+	local function CollectResolverCandidates(spellIndex, candidateIndex, talentName, rank, iconKey)
+		if type(candidateIndex) ~= "table" or type(talentName) ~= "string" then
+			return nil
+		end
+		local keys = {}
+		local lowerName = string.lower(talentName)
+		local baseKey = lowerName .. "\031" .. tostring(rank)
+		keys[1] = baseKey
+		keys[2] = "@n@\031" .. lowerName
+		if iconKey and iconKey ~= "" then
+			keys[table.getn(keys) + 1] = baseKey .. "\031" .. iconKey
+			keys[table.getn(keys) + 1] = "@ri@\031" .. tostring(rank) .. "\031" .. iconKey
+			keys[table.getn(keys) + 1] = "@ni@\031" .. lowerName .. "\031" .. iconKey
+		end
+		local out = {}
+		local seen = {}
+		for i = 1, table.getn(keys) do
+			local key = keys[i]
+			local list = candidateIndex[key]
+			if type(list) == "table" then
+				for j = 1, table.getn(list) do
+					local spellId = list[j]
+					if type(spellId) == "number" and not seen[spellId] then
+						seen[spellId] = true
+						out[table.getn(out) + 1] = spellId
+					end
+				end
+			end
+		end
+		local best = LookupResolvedSpellID(spellIndex, talentName, rank, iconKey)
+		if type(best) == "number" and not seen[best] then
+			out[table.getn(out) + 1] = best
+		end
+		if table.getn(out) < 1 then
+			return nil
+		end
+		return out
+	end
+
+	local function ChooseResolvedSpellID(cache, talentName, rank, iconKey, expectedHints)
+		local spellIndex = cache and cache.index
+		local resolved = LookupResolvedSpellID(spellIndex, talentName, rank, iconKey)
+		if type(expectedHints) ~= "table" or table.getn(expectedHints) < 1 then
+			return resolved
+		end
+		local candidates = CollectResolverCandidates(spellIndex, cache and cache.candidates, talentName, rank, iconKey)
+		if type(candidates) ~= "table" or table.getn(candidates) < 2 then
+			return resolved
+		end
+		local bestId = resolved
+		local function scoreSpell(spellId)
+			local candidateText = GetSpellRecDescription(spellId)
+			local bestScore = -1000
+			for i = 1, table.getn(expectedHints) do
+				local hint = expectedHints[i]
+				local score = ScoreDescriptionMatch(candidateText, hint and hint.text)
+				if type(hint) == "table" and type(hint.weight) == "number" then
+					score = score + hint.weight
+				end
+				if score > bestScore then
+					bestScore = score
+				end
+			end
+			return bestScore
+		end
+		local bestScore = scoreSpell(resolved)
+		for i = 1, table.getn(candidates) do
+			local spellId = candidates[i]
+			local score = scoreSpell(spellId)
+			if score > bestScore or (score == bestScore and type(spellId) == "number" and type(bestId) == "number" and spellId < bestId) then
+				bestId = spellId
+				bestScore = score
+			end
+		end
+		return bestId
 	end
 
 	function Talented:QueueClassSpellResolution(class, maxSpellId)
@@ -983,16 +1246,24 @@ do
 			return nil
 		end
 		local iconKey = NormalizeIconPath(talent.icon)
-		local resolved = LookupResolvedSpellID(spellIndex, talent.name, rank, iconKey)
+		local cache = self._spellRecIndexCache
+		if type(cache) ~= "table" or cache.index ~= spellIndex then
+			cache = {index = spellIndex}
+		end
+		local expectedHints = CollectKnownTalentDescriptions(class, tab, index, rank)
+		local resolved = ChooseResolvedSpellID(cache, talent.name, rank, iconKey, expectedHints)
 		if not resolved then
-			local cache = self._spellRecIndexCache
-			local currentMax = cache and cache.maxSpellId or 0
+			local currentMax = self._spellRecIndexCache and self._spellRecIndexCache.maxSpellId or 0
 			if currentMax < 200000 then
 				if nonBlocking then
 					self:StartAsyncSpellRecIndex(200000)
 				else
 					spellIndex = self:GetSpellRecIndex(200000)
-					resolved = LookupResolvedSpellID(spellIndex, talent.name, rank, iconKey)
+					cache = self._spellRecIndexCache
+					if type(cache) ~= "table" or cache.index ~= spellIndex then
+						cache = {index = spellIndex}
+					end
+					resolved = ChooseResolvedSpellID(cache, talent.name, rank, iconKey, expectedHints)
 				end
 			end
 		end

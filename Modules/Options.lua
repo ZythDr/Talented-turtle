@@ -7,7 +7,7 @@ end})
 Talented.max_talent_points = 51
 
 Talented.defaults = {
-		profile = {
+	profile = {
 			confirmlearn = true,
 			level_cap = true,
 			show_level_req = true,
@@ -18,7 +18,8 @@ Talented.defaults = {
 				framepos = {},
 				hook_inspect_ui = true,
 				inspect_open_as_tab = false,
-				template_tooltip_level = 60
+				template_tooltip_level = 60,
+				all_ranks_modifier = "alt"
 			},
 	global = {templates = {}},
 	char = {targets = {}}
@@ -116,17 +117,31 @@ Talented.options = {
 					disabled = true,
 					order = 9
 				},
+				all_ranks_modifier = {
+					type = "select",
+					name = L["Show all ranks modifier"],
+					desc = L["Choose which modifier key shows all talent ranks in a single tooltip."],
+					arg = "UpdateTooltip",
+					order = 10,
+					values = {
+						none = L["Disabled"],
+						alt = L["Alt"],
+						shift = L["Shift"],
+						ctrl = L["Ctrl"]
+					},
+					values_order = {"none", "alt", "shift", "ctrl"}
+				},
 				header3 = {
 					type = "header",
 					name = L["Display options"],
-					order = 10
+					order = 11
 				},
 				offset = {
 					type = "range",
 					name = L["Icon offset"],
 					desc = L["Distance between icons."],
 					arg = "ReLayout",
-					order = 11,
+					order = 12,
 					min = 48,
 					max = 64,
 					step = 2
@@ -136,7 +151,7 @@ Talented.options = {
 					name = L["Frame scale"],
 					desc = L["Overall scale of the Talented frame."],
 					arg = "ReLayout",
-					order = 12,
+					order = 13,
 					min = 0.5,
 					max = 1.5,
 					step = 0.01
@@ -146,14 +161,14 @@ Talented.options = {
 					name = L["Add bottom offset"],
 					desc = L["Add some space below the talents to show the bottom information."],
 					arg = "ReLayout",
-					order = 13
+					order = 14
 				},
 				dim_tree_background = {
 					type = "toggle",
 					name = L["Dim tree backgrounds"],
 					desc = L["Add a dark overlay over talent tree artwork to improve icon readability."],
 					arg = "UpdateView",
-					order = 14
+					order = 15
 				}
 			}
 		},

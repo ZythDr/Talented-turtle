@@ -11,6 +11,17 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 
 ## Changelog
 
+### v2.5-r20260310-1
+- Added calculator-backed talent data so template and inspected tooltips can use class-specific descriptions and rank spell IDs from Turtle’s talent calculator data.
+- Reduced reliance on the old spell-ID resolver for non-live talent views, improving tooltip accuracy for shared-name talents such as `Lightning Reflexes`.
+- Added a configurable `Show all ranks modifier` option with `Disabled`, `Alt`, `Shift`, and `Ctrl` choices.
+- Replaced the hardcoded `Alt` all-ranks tooltip behavior with the new configurable modifier setting.
+- Kept live player talent tooltips on the native client path while improving fallback selection for templates and inspected talents.
+- Performed a small internal cleanup in `Spell.lua` by centralizing generated talent-data lookup logic.
+
+<details>
+<summary>Full Changelog</summary>
+
 ### v2.4-r20260305-1
 - Fixed talent tooltips being wrong for other players who click a talent chat link (self-describing `EncodeCustomTalentLink` encoding — no sender-side session state required).
 - Fixed talent descriptions missing for non-player classes: `MergeEmbeddedSpellIDs` now backfills real DBC spell IDs from `Data.lua` into ClassData override tables after `ApplyRuntimeClassOverride`, so `GetTalentSpellID` returns valid IDs without requiring a live nampower scan.
@@ -18,9 +29,6 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 - Fixed `SetEnchantSpell` in `CreateSpellLinkTooltip` not checking `SUPERWOW_VERSION` (was only checking `SetHyperlink` presence, inconsistent with `Tips.lua`).
 - Added `Talented.hasNamepower` and `Talented.hasSuperWoW` flags set once at load time using each DLL's official probe (`GetNampowerVersion()` and `SUPERWOW_VERSION` respectively).
 - Improved `ResolveTemplateSpellIDs` error messages to distinguish "nampower not installed" from "older nampower version without `GetSpellRecField`".
-
-<details>
-<summary>Full Changelog</summary>
 
 ### v2.3-r20260221-1
 - Improved inspect-template point budgeting UX:

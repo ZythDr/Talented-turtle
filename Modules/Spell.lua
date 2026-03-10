@@ -344,6 +344,91 @@ do
 		return nil
 	end
 
+	local function GetCalculatorTalentData(class, tab, index)
+		local root = _G.TalentedTooltipData
+		local classData = root and root[class]
+		local tree = classData and classData[tab]
+		local talent = tree and tree[index]
+		if type(talent) == "table" then
+			return talent
+		end
+		return nil
+	end
+
+	local function GetOverrideTalentData(class, tab, index)
+		local root = _G.TalentedDataOverride
+		local classData = root and root.spelldata and root.spelldata[class]
+		local tree = classData and classData[tab]
+		local talent = tree and tree[index]
+		if type(talent) == "table" then
+			return talent
+		end
+		return nil
+	end
+
+	-- CalculatorData.lua is the preferred generated source. Runtime override data
+	-- remains as a compatibility fallback for older generated files and partial
+	-- override states.
+	local function GetGeneratedTalentData(class, tab, index)
+		return GetCalculatorTalentData(class, tab, index) or GetOverrideTalentData(class, tab, index)
+	end
+
+	local function SplitSlashParts(text)
+		if type(text) ~= "string" or text == "" then
+			return nil
+		end
+		local parts = {}
+		for part in string.gfind(text, "[^/]+") do
+			parts[table.getn(parts) + 1] = part
+		end
+		if table.getn(parts) < 2 then
+			return nil
+		end
+		return parts
+	end
+
+	local function ExpandSlashToken(token, rank, maxRank)
+		if type(token) ~= "string" or token == "" then
+			return token
+		end
+		local lead, body, tail = string.match(token, "^([^%w%%%.%-]*)(.-)([^%w%%%.%-]*)$")
+		body = body or token
+		lead = lead or ""
+		tail = tail or ""
+		if not string.find(body, "/", 1, true) then
+			return token
+		end
+		local parts = SplitSlashParts(body)
+		if type(parts) ~= "table" or table.getn(parts) ~= maxRank then
+			return token
+		end
+		local chosen = parts[rank]
+		if type(chosen) ~= "string" or chosen == "" then
+			return token
+		end
+		return lead .. chosen .. tail
+	end
+
+	local function ExpandCalculatorDescription(text, rank, maxRank)
+		if type(text) ~= "string" or text == "" then
+			return nil
+		end
+		if type(rank) ~= "number" or rank < 1 then
+			rank = 1
+		end
+		if type(maxRank) ~= "number" or maxRank < 2 then
+			return text
+		end
+		local tokens = {}
+		for token in string.gfind(text, "%S+") do
+			tokens[table.getn(tokens) + 1] = ExpandSlashToken(token, rank, maxRank)
+		end
+		if table.getn(tokens) < 1 then
+			return text
+		end
+		return table.concat(tokens, " ")
+	end
+
 	-- Copies real DBC spell IDs from a parsed embedded talent table into an override
 	-- table whose ranks are still sequential-integer placeholders ({1,2,3,...}).
 	-- Called once per class the first time UncompressSpellData resolves a ClassData
@@ -691,6 +776,7 @@ do
 				end
 			end
 			local talent = self:UncompressSpellData(class)[tab][index]
+			local generated = GetGeneratedTalentData(class, tab, index)
 			local spell = self:GetTalentSpellID(class, tab, index, rank)
 			local linkDesc
 			if spell and self.spellLinkDescCache then
@@ -706,6 +792,10 @@ do
 			local recDesc = GetSpellRecDescription(spell)
 			if recDesc and recDesc ~= "" and not IsSuspiciousTalentSpellText(recDesc) then
 				return recDesc
+			end
+			local generatedDesc = ExpandCalculatorDescription((generated and generated.desc) or (talent and talent.desc), rank, talent and talent.ranks and table.getn(talent.ranks))
+			if generatedDesc and generatedDesc ~= "" then
+				return generatedDesc
 			end
 			if desc and desc ~= "" then
 				return desc
@@ -788,6 +878,8 @@ do
 	function Talented:GetTalentSpellID(class, tab, index, rank)
 		local tree = self:UncompressSpellData(class)
 		local talent = tree and tree[tab] and tree[tab][index]
+		local generated = GetGeneratedTalentData(class, tab, index)
+		local generatedRanks = generated and generated.ranks
 		local ranks = talent and talent.ranks
 		if type(ranks) ~= "table" then
 			return nil
@@ -801,6 +893,12 @@ do
 		end
 
 		if IsPlaceholderRanks(ranks) then
+			if type(generatedRanks) == "table" and table.getn(generatedRanks) == maxRank then
+				local generatedSpell = generatedRanks[rank]
+				if type(generatedSpell) == "number" and generatedSpell > 0 then
+					return generatedSpell
+				end
+			end
 			local resolved = self:ResolveTalentRankSpellID(class, tab, index, rank, nil, true)
 			if type(resolved) == "number" then
 				return resolved
@@ -811,6 +909,12 @@ do
 		local spell = ranks[rank]
 		if type(spell) ~= "number" then
 			return nil
+		end
+		if type(generatedRanks) == "table" and table.getn(generatedRanks) == maxRank then
+			local generatedSpell = generatedRanks[rank]
+			if type(generatedSpell) == "number" and generatedSpell > 0 and (spell == rank or IsSuspiciousTalentSpellID(spell)) then
+				spell = generatedSpell
+			end
 		end
 		local _, playerClass = UnitClass("player")
 		if class ~= playerClass then

@@ -1402,7 +1402,7 @@ do
 		end
 		local ordered = {}
 		for key, opt in pairs(args) do
-			if type(opt) == "table" and (opt.type == "header" or opt.type == "toggle" or opt.type == "range") then
+			if type(opt) == "table" and (opt.type == "header" or opt.type == "toggle" or opt.type == "range" or opt.type == "select") then
 				ordered[table.getn(ordered) + 1] = {key = key, opt = opt, order = opt.order or 999}
 			end
 		end
@@ -1458,6 +1458,35 @@ do
 			return string.format("%.2f", value)
 		end
 		return tostring(math.floor(value + 0.5))
+	end
+
+	local function GetSelectOrder(opt)
+		if type(opt) ~= "table" then
+			return {}
+		end
+		if type(opt.values_order) == "table" and table.getn(opt.values_order) > 0 then
+			return opt.values_order
+		end
+		local order = {}
+		local values = opt.values
+		if type(values) == "table" then
+			for key in pairs(values) do
+				order[table.getn(order) + 1] = key
+			end
+			table.sort(order, function(a, b)
+				return tostring(a) < tostring(b)
+			end)
+		end
+		return order
+	end
+
+	local function GetSelectLabel(opt, value)
+		local values = opt and opt.values
+		local label = type(values) == "table" and values[value] or nil
+		if type(label) == "string" and label ~= "" then
+			return label
+		end
+		return tostring(value or "")
 	end
 
 	local function OnOptionEnter(self)
@@ -1516,6 +1545,23 @@ do
 				else
 					if row.minus.Enable then row.minus:Enable() end
 					if row.plus.Enable then row.plus:Enable() end
+					row.label:SetTextColor(1, 0.82, 0)
+					row.value:SetTextColor(1, 1, 1)
+				end
+			elseif row.kind == "select" then
+				local order = GetSelectOrder(opt)
+				local current = value
+				if type(current) ~= "string" or not opt.values or opt.values[current] == nil then
+					current = order[1]
+					self.db.profile[key] = current
+				end
+				row.value:SetText(GetSelectLabel(opt, current))
+				if disabled then
+					if row.button.Disable then row.button:Disable() end
+					row.label:SetTextColor(0.5, 0.5, 0.5)
+					row.value:SetTextColor(0.5, 0.5, 0.5)
+				else
+					if row.button.Enable then row.button:Enable() end
 					row.label:SetTextColor(1, 0.82, 0)
 					row.value:SetTextColor(1, 1, 1)
 				end
@@ -1721,6 +1767,66 @@ do
 					value = value,
 					minus = minus,
 					plus = plus
+				}
+				y = y - 26
+			elseif opt.type == "select" then
+				local row = CreateFrame("Frame", nil, frame)
+				row:SetSize(390, 22)
+				row:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, y)
+				row.tooltip = opt.desc
+				row:SetScript("OnEnter", OnOptionEnter)
+				row:SetScript("OnLeave", OnOptionLeave)
+
+				local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+				label:SetPoint("LEFT", row, "LEFT", 0, 0)
+				label:SetWidth(210)
+				label:SetJustifyH("LEFT")
+				label:SetText(opt.name or key)
+
+				local button = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+				button:SetPoint("LEFT", label, "RIGHT", 8, 0)
+				button:SetSize(92, 20)
+				button:SetText(L["Change"])
+				button.tooltip = opt.desc
+				button:SetScript("OnEnter", OnOptionEnter)
+				button:SetScript("OnLeave", OnOptionLeave)
+
+				local value = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+				value:SetPoint("LEFT", button, "RIGHT", 8, 0)
+				value:SetWidth(120)
+				value:SetJustifyH("LEFT")
+
+				button:SetScript("OnClick", function()
+					if not Talented.db or not Talented.db.profile then
+						return
+					end
+					local order = GetSelectOrder(opt)
+					local count = table.getn(order)
+					if count < 1 then
+						return
+					end
+					local current = Talented.db.profile[key]
+					local pos = 1
+					for i = 1, count do
+						if order[i] == current then
+							pos = i
+							break
+						end
+					end
+					pos = pos + 1
+					if pos > count then
+						pos = 1
+					end
+					ApplyOptionChange(opt, key, order[pos])
+				end)
+
+				frame._rows[table.getn(frame._rows) + 1] = {
+					kind = "select",
+					key = key,
+					opt = opt,
+					label = label,
+					button = button,
+					value = value
 				}
 				y = y - 26
 			end

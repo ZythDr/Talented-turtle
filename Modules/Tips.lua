@@ -24,10 +24,47 @@ do
 	local ipairs = ipairs
 	local GameTooltip = GameTooltip
 	local IsAltKeyDown = IsAltKeyDown
+	local IsShiftKeyDown = IsShiftKeyDown
+	local IsControlKeyDown = IsControlKeyDown
 	local GREEN_FONT_COLOR = GREEN_FONT_COLOR
 	local NORMAL_FONT_COLOR = NORMAL_FONT_COLOR
 	local HIGHLIGHT_FONT_COLOR = HIGHLIGHT_FONT_COLOR
 	local RED_FONT_COLOR = RED_FONT_COLOR
+
+	local function GetAllRanksModifier()
+		local profile = Talented and Talented.db and Talented.db.profile
+		local value = profile and profile.all_ranks_modifier
+		if value == "none" or value == "alt" or value == "shift" or value == "ctrl" then
+			return value
+		end
+		return "alt"
+	end
+
+	local function IsAllRanksModifierDown()
+		local modifier = GetAllRanksModifier()
+		if modifier == "none" then
+			return false
+		elseif modifier == "shift" then
+			return type(IsShiftKeyDown) == "function" and IsShiftKeyDown() and true or false
+		elseif modifier == "ctrl" then
+			return type(IsControlKeyDown) == "function" and IsControlKeyDown() and true or false
+		end
+		return type(IsAltKeyDown) == "function" and IsAltKeyDown() and true or false
+	end
+
+	local function IsTrackedModifierEvent(mod)
+		local modifier = GetAllRanksModifier()
+		if modifier == "none" or type(mod) ~= "string" then
+			return false
+		end
+		mod = string.upper(mod)
+		if modifier == "shift" then
+			return string.find(mod, "SHIFT", 1, true) ~= nil
+		elseif modifier == "ctrl" then
+			return string.find(mod, "CTRL", 1, true) ~= nil or string.find(mod, "CONTROL", 1, true) ~= nil
+		end
+		return string.find(mod, "ALT", 1, true) ~= nil
+	end
 
 	local function addline(line, color, split)
 		GameTooltip:AddLine(line, color.r, color.g, color.b, split)
@@ -184,7 +221,7 @@ do
 				local rank = template[tab][index]
 				local _, playerClass = UnitClass("player")
 				local usingDefaultTooltip = false
-				local allowNativeTooltip = (class == playerClass and template and template.talentGroup and not IsAltKeyDown())
+				local allowNativeTooltip = (class == playerClass and template and template.talentGroup and not IsAllRanksModifierDown())
 			-- Only use GameTooltip:SetTalent (Blizzard native) in edit mode.
 			-- That API unconditionally appends "Click to learn" which is misleading
 			-- when the player cannot actually learn (no unspent points, view mode).
@@ -223,7 +260,7 @@ do
 				if tier >= 1 and self:GetTalentTabCount(template, tab) < tier then
 					addline(SafeFormat(TOOLTIP_TALENT_TIER_POINTS or "", tier, self.tabdata[class][tab].name), RED_FONT_COLOR)
 				end
-					if IsAltKeyDown() then
+					if IsAllRanksModifierDown() then
 						for i = 1, ranks do
 								local tip = self:GetTalentDesc(class, tab, index, i, allowNativeTooltip)
 							if type(tip) == "table" then
@@ -288,7 +325,7 @@ do
 		end
 
 	function Talented:MODIFIER_STATE_CHANGED(mod)
-		if string.sub(mod or "", -3) == "ALT" then
+		if IsTrackedModifierEvent(mod) then
 			self:UpdateTooltip()
 		end
 	end
