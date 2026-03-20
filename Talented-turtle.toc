@@ -2,7 +2,7 @@
 ## Title: Talented
 ## Notes: The Talent Template Editor (Vanilla/Turtle). Requires nampower or SuperWoW (one or both).
 ## Author: ZythDr
-## Version: v2.5-r20260310-1
+## Version: v3.0-r20260320-1
 ## SavedVariables: TalentedDB
 ## X-Category: Interface Enhancements
 Ace2\AceLibrary\AceLibrary.lua
@@ -37,7 +37,6 @@ ClassData\ROGUE.lua
 ClassData\SHAMAN.lua
 ClassData\WARLOCK.lua
 ClassData\WARRIOR.lua
-Modules\CalculatorData.lua
 Modules\Exporters.lua
 Ui.lua
 Modules\SkinAPI.lua
