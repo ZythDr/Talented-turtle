@@ -893,7 +893,7 @@ do
 		end
 
 		if IsPlaceholderRanks(ranks) then
-			if type(generatedRanks) == "table" and table.getn(generatedRanks) == maxRank then
+			if type(generatedRanks) == "table" and table.getn(generatedRanks) == maxRank and not IsPlaceholderRanks(generatedRanks) then
 				local generatedSpell = generatedRanks[rank]
 				if type(generatedSpell) == "number" and generatedSpell > 0 then
 					return generatedSpell

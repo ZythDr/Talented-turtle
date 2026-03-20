@@ -347,6 +347,13 @@ def compact_talents(talent_form: dict) -> list:
             part = part.strip()
             if part.isdigit():
                 spell_ids.append(int(part))
+        # Fall back to sequential placeholders when spell IDs aren't in the
+        # calculator yet (new patch talents). This preserves the correct rank
+        # count so tooltips show "Rank 0/N" instead of "Rank 0/0".
+        if not spell_ids:
+            rank_count = talent.get("ranks") or 0
+            if isinstance(rank_count, int) and rank_count > 0:
+                spell_ids = list(range(1, rank_count + 1))
 
         raw_icon = talent.get("icon") or ""
         icon = ("Interface\\Icons\\" + raw_icon) if raw_icon and not raw_icon.startswith("Interface") else raw_icon

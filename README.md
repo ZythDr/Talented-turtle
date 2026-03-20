@@ -9,7 +9,7 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 
 ## Changelog
 
-### v3.0-r20260320-1
+### v3.0-r20260320
 - Updated talent data for Turtle WoW Patch 1.18.1.
 - Replaced the old manual ClassData generation workflow with a fully automated scraper (`tools/fetch_talent_data.py`).
   - Discovers all 27 talent trees from `talent-builder.dev/collections/1.18.1` automatically.
@@ -18,6 +18,7 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
   - Run with `python3 tools/fetch_talent_data.py` (or pass a collection slug: `python3 tools/fetch_talent_data.py 1.18.2`).
 - ClassData files now include `icon` and `req` (prerequisite) fields sourced from the calculator, where previously these came from an in-game `/talented dumpdata` capture.
 - Removed `Modules/CalculatorData.lua` from the addon (moved to `tools/` as reference). The ClassData files are now the single authoritative data source.
+- Fixed tooltip descriptions being blank for new 1.18.1 talents whose spell IDs are not yet in the calculator database. Sequential placeholder IDs (e.g. `{1, 2}`) are now correctly detected and bypassed so `GetTalentDesc` falls through to the description text from ClassData.
 
 <details>
 <summary>Previous Changes / Full Changelog</summary>

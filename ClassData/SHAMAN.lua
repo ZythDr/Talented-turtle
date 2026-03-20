@@ -131,6 +131,8 @@ do
         ["icon"] = "Interface\\Icons\\earthshaker_slam_16",
         ["desc"] = "Increases the maximum charges of Earth Shield by 2/4, while it is active your damaging spells replenish one charge and it increases your chance to avoid interruption caused by damage while casting any damaging spells by an additional 25/50%.",
         ["ranks"] = {
+          1,
+          2,
         },
       },
       {
