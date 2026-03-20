@@ -19,6 +19,9 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 - ClassData files now include `icon` and `req` (prerequisite) fields sourced from the calculator, where previously these came from an in-game `/talented dumpdata` capture.
 - Removed `Modules/CalculatorData.lua` from the addon (moved to `tools/` as reference). The ClassData files are now the single authoritative data source.
 
+<details>
+<summary>Previous Changes / Full Changelog</summary>
+  
 ### v2.5-r20260310-1
 - Added calculator-backed talent data so template and inspected tooltips can use class-specific descriptions and rank spell IDs from Turtle’s talent calculator data.
 - Reduced reliance on the old spell-ID resolver for non-live talent views, improving tooltip accuracy for shared-name talents such as `Lightning Reflexes`.
@@ -27,8 +30,6 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 - Kept live player talent tooltips on the native client path while improving fallback selection for templates and inspected talents.
 - Performed a small internal cleanup in `Spell.lua` by centralizing generated talent-data lookup logic.
 
-<details>
-<summary>Full Changelog</summary>
 
 ### v2.4-r20260305-1
 - Fixed talent tooltips being wrong for other players who click a talent chat link (self-describing `EncodeCustomTalentLink` encoding — no sender-side session state required).
