@@ -38,53 +38,6 @@ local function CreateOpenButton(name, parent, x, y, point, relativePoint)
 	return button
 end
 
-local function AnchorOpenTab(tab)
-	if type(tab) ~= "table" then
-		return
-	end
-	tab:ClearAllPoints()
-	if type(_G.InspectFrameTab3) == "table" then
-		tab:SetPoint("TOPLEFT", _G.InspectFrameTab3, "TOPRIGHT", -16, 0)
-	elseif type(_G.InspectFrameTab2) == "table" then
-		tab:SetPoint("TOPLEFT", _G.InspectFrameTab2, "TOPRIGHT", -16, 0)
-	else
-		tab:SetPoint("TOPLEFT", _G.InspectFrame, "BOTTOMLEFT", 100, 2)
-	end
-end
-
-local function CreateOpenTab(name, parent)
-	if type(parent) ~= "table" or type(_G.InspectFrameTab3) ~= "table" then
-		return nil
-	end
-	local tab = _G[name]
-	if not tab then
-		tab = CreateFrame("Button", name, parent, "CharacterFrameTabButtonTemplate")
-	end
-	tab:SetText(L["Talented"])
-	tab:SetID(4)
-	if type(PanelTemplates_TabResize) == "function" then
-		PanelTemplates_TabResize(0, tab)
-	end
-	AnchorOpenTab(tab)
-	tab:SetScript("OnClick", function(self)
-		local tabButton = self or _G.this
-		if type(PlaySound) == "function" then
-			PlaySound("igCharacterInfoTab")
-		end
-		Talented:OpenInspectedTemplateFromButton()
-		if tabButton and type(PanelTemplates_DeselectTab) == "function" then
-			PanelTemplates_DeselectTab(tabButton)
-		end
-		if tabButton and type(tabButton.SetChecked) == "function" then
-			tabButton:SetChecked(nil)
-		end
-		if tabButton and type(tabButton.UnlockHighlight) == "function" then
-			tabButton:UnlockHighlight()
-		end
-	end)
-	return tab
-end
-
 function Talented:OpenInspectedTemplateFromButton()
 	local unit = self:GetInspectUnit()
 	local level = unit and tonumber(UnitLevel(unit)) or 0
@@ -110,19 +63,19 @@ function Talented:OpenInspectedTemplateFromButton()
 		end
 	end
 	if not template then
+		-- Remember that the user wants the template opened once data arrives.
+		-- CHAT_MSG_ADDON (INSTalentEND) will auto-open when whisper completes.
+		self._inspectOpenPending = true
 		self:Print(L["No inspected talent data is available yet."])
 		return
 	end
+	self._inspectOpenPending = nil
 	self:OpenTemplate(template)
 end
 
 function Talented:EnsureInspectButtons()
 	if _G.InspectFrame then
 		self.inspectOpenInTalentedButton = self.inspectOpenInTalentedButton or CreateOpenButton("TalentedInspectOpenButton", _G.InspectFrame, -42, 82, "BOTTOMRIGHT", "BOTTOMRIGHT")
-		-- Create once as soon as inspect talent tab exists, so skin addons can catch it.
-		if not self.inspectOpenInTalentedTab and _G.InspectFrameTab3 then
-			self.inspectOpenInTalentedTab = CreateOpenTab("InspectFrameTab4", _G.InspectFrame)
-		end
 	end
 	if _G.SuperInspectFrame then
 		self.superInspectOpenInTalentedButton = self.superInspectOpenInTalentedButton or CreateOpenButton("TalentedSuperInspectOpenButton", _G.SuperInspectFrame, -10, -50)

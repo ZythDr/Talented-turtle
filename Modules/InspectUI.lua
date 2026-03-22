@@ -52,8 +52,28 @@ end
 
 do
 	local prev_script
+	local prev_script_tab
 	local prev_inspect_show
 	local prev_twinspect_show
+
+	-- Find the Talents tab on the InspectFrame by text, since its tab number
+	-- shifted from Tab3 to Tab4 in Turtle WoW patch 1.18.1 (Arena was inserted
+	-- at Tab3). Exposed on Talented so InspectButtons.lua can share it.
+	function Talented.GetInspectTalentsTab()
+		local talentsText = _G.TALENTS or "Talents"
+		for i = 3, 8 do
+			local tab = _G["InspectFrameTab" .. i]
+			if type(tab) == "table" and type(tab.GetText) == "function" then
+				local txt = tab:GetText()
+				if type(txt) == "string" and txt == talentsText then
+					return tab
+				end
+			end
+		end
+		-- Fallback: Tab4 (1.18.1+) then Tab3 (pre-1.18.1)
+		return _G.InspectFrameTab4 or _G.InspectFrameTab3
+	end
+
 	local TURTLE_INSPECT_PREFIX = "TW_CHAT_MSG_WHISPER"
 	local TURTLE_INSPECT_DONE = "INSTalentEND;"
 	local TURTLE_TALENT_REQUEST = "TalentInfoRequest_"
@@ -247,6 +267,7 @@ do
 			self._inspectLastRequestName = name
 			self._inspectLastRequestAt = now
 			self._turtleSpecValid = false
+			self._inspectOpenPending = nil
 			if reason == "inspect-tab" then
 				self._suppressInspectTalentsUI = nil
 				self._suppressInspectTalentsUIUntil = nil
@@ -311,9 +332,11 @@ do
 	end
 
 	function Talented:HookInspectUI()
-		if InspectFrameTab3 and not prev_script then
-			prev_script = InspectFrameTab3:GetScript("OnClick")
-			InspectFrameTab3:SetScript("OnClick", new_script)
+		local talentsTab = Talented.GetInspectTalentsTab()
+		if talentsTab and not prev_script then
+			prev_script = talentsTab:GetScript("OnClick")
+			prev_script_tab = talentsTab
+			talentsTab:SetScript("OnClick", new_script)
 		end
 		if type(_G.InspectFrame_Show) == "function" and _G.InspectFrame_Show ~= inspect_show_proxy then
 			prev_inspect_show = _G.InspectFrame_Show
@@ -327,8 +350,10 @@ do
 	end
 
 	function Talented:UnhookInspectUI()
-		if not InspectFrameTab3 then
+		local talentsTab = prev_script_tab or Talented.GetInspectTalentsTab()
+		if not talentsTab then
 			prev_script = nil
+			prev_script_tab = nil
 			if _G.InspectFrame_Show == inspect_show_proxy and prev_inspect_show then
 				_G.InspectFrame_Show = prev_inspect_show
 			end
@@ -342,8 +367,9 @@ do
 			return
 		end
 		if prev_script then
-			InspectFrameTab3:SetScript("OnClick", prev_script)
+			talentsTab:SetScript("OnClick", prev_script)
 			prev_script = nil
+			prev_script_tab = nil
 		end
 		if _G.InspectFrame_Show == inspect_show_proxy and prev_inspect_show then
 			_G.InspectFrame_Show = prev_inspect_show
@@ -362,13 +388,13 @@ do
 		if self.db.profile.hook_inspect_ui then
 			self:RegisterEvent("INSPECT_TALENT_READY")
 			self:RegisterEvent("PLAYER_TARGET_CHANGED")
-			if InspectFrameTab3 or IsAddOnLoaded("Blizzard_InspectUI") then
+			if Talented.GetInspectTalentsTab() or IsAddOnLoaded("Blizzard_InspectUI") then
 				self:HookInspectUI()
 			end
 		else
 			self:UnregisterEvent("INSPECT_TALENT_READY")
 			self:UnregisterEvent("PLAYER_TARGET_CHANGED")
-			if InspectFrameTab3 or IsAddOnLoaded("Blizzard_InspectUI") then
+			if Talented.GetInspectTalentsTab() or IsAddOnLoaded("Blizzard_InspectUI") then
 				self:UnhookInspectUI()
 			end
 		end
@@ -450,7 +476,13 @@ do
 			return
 		end
 		self._turtleSpecValid = true
-		self:UpdateInspectTemplate()
+		local template = self:UpdateInspectTemplate()
+		-- If the user clicked the Talented button before whisper data arrived,
+		-- auto-open now that the response is complete.
+		if template and self._inspectOpenPending and type(self.OpenTemplate) == "function" then
+			self._inspectOpenPending = nil
+			self:OpenTemplate(template)
+		end
 		if type(self.UpdateInspectButtons) == "function" then
 			self:UpdateInspectButtons()
 		end

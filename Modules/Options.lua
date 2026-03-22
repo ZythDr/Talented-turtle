@@ -17,7 +17,6 @@ Talented.defaults = {
 				dim_tree_background = false,
 				framepos = {},
 				hook_inspect_ui = true,
-				inspect_open_as_tab = false,
 				template_tooltip_level = 60,
 				all_ranks_modifier = "alt"
 			},
@@ -102,13 +101,6 @@ Talented.options = {
 					desc = L["Hook the Talent Inspection UI."],
 					arg = "CheckHookInspectUI",
 					order = 7
-				},
-				inspect_open_as_tab = {
-					type = "toggle",
-					name = L["Use Inspect tab"],
-					desc = L["Use a tab-like Talented control on the default InspectFrame instead of a button."],
-					arg = "EnsureInspectButtons",
-					order = 8
 				},
 				show_url_in_chat = {
 					type = "toggle",

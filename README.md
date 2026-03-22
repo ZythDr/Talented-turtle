@@ -9,6 +9,15 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 
 ## Changelog
 
+### v3.1-r20260322-1
+- Fixed player inspect being completely broken after Turtle WoW patch 1.18.1.
+  - Patch 1.18.1 inserted an **Arena** tab at `InspectFrameTab3`, shifting the Talents tab from Tab3 to Tab4. All of Talented's inspect hooks were hardcoded to `InspectFrameTab3`, causing three simultaneous failures: clicking Talents never sent the whisper request, the Talented button was hidden when Talents was active (and shown for Arena), and the hook sentinel fired on the wrong tab.
+  - Added `Talented.GetInspectTalentsTab()` which scans `InspectFrameTab3`–`Tab8` for the tab whose text matches the `TALENTS` locale string (with Tab4→Tab3 as a name-blind fallback), so the correct tab is always found regardless of future tab insertions.
+  - `HookInspectUI`/`UnhookInspectUI` now use `GetInspectTalentsTab()` and store the hooked tab reference so `UnhookInspectUI` always restores the correct tab.
+  - `UpdateInspectButtons` now uses `GetInspectTalentsTab()` to determine Talented button visibility.
+- Removed the "Use Inspect tab" option (`inspect_open_as_tab`). The old `InspectFrameTab4` Talented tab conflicted with Turtle WoW's own tabs after 1.18.1. The inspect frame now exclusively uses the floating Talented button (`TalentedInspectOpenButton`).
+- When the Talented button is clicked before the whisper response arrives, the view now auto-opens as soon as `INSTalentEND` is received, instead of requiring a second click.
+
 ### v3.0-r20260320
 - Updated talent data for Turtle WoW Patch 1.18.1.
 - Replaced the old manual ClassData generation workflow with a fully automated scraper (`tools/fetch_talent_data.py`).
