@@ -135,7 +135,11 @@ do
 
 	local function GetInspectTalentRank(class, tab, index, talentGroup, preferTurtle)
 		local rank
-		if not preferTurtle then
+		-- When the Turtle WoW whisper-protocol inspect API is present, GetTalentInfo(true)
+		-- returns the player's OWN talents (not the inspect target's) in 1.18.1, so skip
+		-- that path entirely and rely solely on inspectCom.SPEC populated by the whisper.
+		local hasTurtleAPI = HasTurtleInspectAPI()
+		if not preferTurtle and not hasTurtleAPI then
 			local _, _, _, _, inspectRank = _G.GetTalentInfo(tab, index, true, nil, talentGroup)
 			if type(inspectRank) == "number" then
 				return inspectRank, true
@@ -145,7 +149,7 @@ do
 		if type(rank) == "number" then
 			return rank, true
 		end
-		if preferTurtle then
+		if preferTurtle and not hasTurtleAPI then
 			local _, _, _, _, inspectRank = _G.GetTalentInfo(tab, index, true, nil, talentGroup)
 			if type(inspectRank) == "number" then
 				return inspectRank, true
@@ -447,6 +451,9 @@ do
 		end
 		self._turtleSpecValid = true
 		self:UpdateInspectTemplate()
+		if type(self.UpdateInspectButtons) == "function" then
+			self:UpdateInspectButtons()
+		end
 	end
 
 	function Talented:UpdateInspectTemplate()
