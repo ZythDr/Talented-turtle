@@ -242,6 +242,7 @@ do
 			end
 			self._inspectLastRequestName = name
 			self._inspectLastRequestAt = now
+			self._turtleSpecValid = false
 			if reason == "inspect-tab" then
 				self._suppressInspectTalentsUI = nil
 				self._suppressInspectTalentsUIUntil = nil
@@ -444,6 +445,7 @@ do
 		if not string.find(message, TURTLE_INSPECT_DONE, 1, true) then
 			return
 		end
+		self._turtleSpecValid = true
 		self:UpdateInspectTemplate()
 	end
 
@@ -466,7 +468,11 @@ do
 		end
 		self:QueueClassSpellResolution(class, 80000)
 		local turtleSpec = GetTurtleInspectSpec()
-		local useTurtleInspect = HasTurtleInspectAPI()
+		-- Only trust turtle spec data when it was explicitly validated by a completed
+		-- whisper-protocol response (TURTLE_INSPECT_DONE). In Turtle WoW 1.18.1 the
+		-- compiled Blizzard_InspectUI can populate SPEC with the player's own talent
+		-- data as a side-effect, so we must not treat that as inspect target data.
+		local useTurtleInspect = HasTurtleInspectAPI() and (self._turtleSpecValid == true)
 		if useTurtleInspect and type(turtleSpec) == "table" and type(turtleSpec.class) == "string" and turtleSpec.class ~= class then
 			useTurtleInspect = false
 		end
