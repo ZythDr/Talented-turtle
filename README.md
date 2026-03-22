@@ -2,7 +2,7 @@
 
 Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 
-**Updated to support Patch 1.18.1**
+**Support for patch 1.18.1 is WIP, currently templates and player-talents work, but not inspecting other players' talents**
 
 <img width="1154" height="713" alt="image" src="https://github.com/user-attachments/assets/a3e2964b-4ee2-4b95-a171-76a4785db829" />
 
