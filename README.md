@@ -21,6 +21,9 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
   - `SwitchToTab1` now uses `InspectFrameTab1:Click()` to fire the XML-defined handler (vanilla `GetScript("OnClick")` returns nil for XML-defined tab handlers).
 - Added **Debug Inspect** option in settings: prints the full inspect pipeline state (`inspectCom.SPEC` / `turtleInspectSpec` contents and `useTurtleInspect` flag) to chat at each stage, for troubleshooting inspect issues.
 
+<details>
+<summary>Previous Changes / Full Changelog</summary>
+
 ### v3.1-r20260322-1
 - Fixed player inspect being completely broken after Turtle WoW patch 1.18.1.
   - Patch 1.18.1 inserted an **Arena** tab at `InspectFrameTab3`, shifting the Talents tab from Tab3 to Tab4. All of Talented's inspect hooks were hardcoded to `InspectFrameTab3`, causing three simultaneous failures: clicking Talents never sent the whisper request, the Talented button was hidden when Talents was active (and shown for Arena), and the hook sentinel fired on the wrong tab.
@@ -41,8 +44,6 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 - Removed `Modules/CalculatorData.lua` from the addon (moved to `tools/` as reference). The ClassData files are now the single authoritative data source.
 - Fixed tooltip descriptions being blank for new 1.18.1 talents whose spell IDs are not yet in the calculator database. Sequential placeholder IDs (e.g. `{1, 2}`) are now correctly detected and bypassed so `GetTalentDesc` falls through to the description text from ClassData.
 
-<details>
-<summary>Previous Changes / Full Changelog</summary>
   
 ### v2.5-r20260310-1
 - Added calculator-backed talent data so template and inspected tooltips can use class-specific descriptions and rank spell IDs from Turtle’s talent calculator data.
