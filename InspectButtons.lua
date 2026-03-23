@@ -63,9 +63,13 @@ function Talented:OpenInspectedTemplateFromButton()
 		end
 	end
 	if not template then
-		-- Remember that the user wants the template opened once data arrives.
-		-- CHAT_MSG_ADDON (INSTalentEND) will auto-open when whisper completes.
 		self._inspectOpenPending = true
+		-- Fallback: if inspect_show_proxy didn't fire (e.g. opened via right-click
+		-- before InspectFrame was available), trigger the Tab4 pre-load now.
+		-- INSTalentEND will auto-open the template via _inspectOpenPending.
+		if type(Talented.TriggerInspectTab4Preload) == "function" then
+			Talented:TriggerInspectTab4Preload()
+		end
 		self:Print(L["No inspected talent data is available yet."])
 		return
 	end
@@ -102,15 +106,11 @@ function Talented:UpdateInspectButtons()
 	local b = self.inspectOpenInTalentedButton
 	local t = self.inspectOpenInTalentedTab
 
-	if enabled and _G.InspectFrame and _G.InspectFrameTab3 and (not t) then
-		t = CreateOpenTab("InspectFrameTab4", _G.InspectFrame)
-		self.inspectOpenInTalentedTab = t
-	end
 	if b then
 		local show = false
-		if enabled and not useTab and _G.InspectFrame and _G.InspectFrame:IsShown() and _G.InspectFrameTab3 then
-			if type(_G.InspectFrameTab3.GetChecked) == "function" then
-				show = _G.InspectFrameTab3:GetChecked() and true or false
+		if enabled and not useTab and _G.InspectFrame and _G.InspectFrame:IsShown() and _G.InspectFrameTab4 then
+			if type(_G.InspectFrameTab4.GetChecked) == "function" then
+				show = _G.InspectFrameTab4:GetChecked() and true or false
 			else
 				show = true
 			end

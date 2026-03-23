@@ -17,6 +17,7 @@ Talented.defaults = {
 				dim_tree_background = false,
 				framepos = {},
 				hook_inspect_ui = true,
+				debug_inspect = false,
 				template_tooltip_level = 60,
 				all_ranks_modifier = "alt"
 			},
@@ -101,6 +102,12 @@ Talented.options = {
 					desc = L["Hook the Talent Inspection UI."],
 					arg = "CheckHookInspectUI",
 					order = 7
+				},
+				debug_inspect = {
+					type = "toggle",
+					name = L["Debug Inspect"],
+					desc = L["Print inspect pipeline debug info to chat (inspectCom.SPEC contents at each stage)."],
+					order = 8
 				},
 				show_url_in_chat = {
 					type = "toggle",

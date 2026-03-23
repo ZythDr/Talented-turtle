@@ -52,30 +52,21 @@ end
 
 do
 	local prev_script
-	local prev_script_tab
 	local prev_inspect_show
 	local prev_twinspect_show
 
-	-- Find the Talents tab on the InspectFrame by text, since its tab number
-	-- shifted from Tab3 to Tab4 in Turtle WoW patch 1.18.1 (Arena was inserted
-	-- at Tab3). Exposed on Talented so InspectButtons.lua can share it.
-	function Talented.GetInspectTalentsTab()
-		local talentsText = _G.TALENTS or "Talents"
-		for i = 3, 8 do
-			local tab = _G["InspectFrameTab" .. i]
-			if type(tab) == "table" and type(tab.GetText) == "function" then
-				local txt = tab:GetText()
-				if type(txt) == "string" and txt == talentsText then
-					return tab
-				end
-			end
-		end
-		-- Fallback: Tab4 (1.18.1+) then Tab3 (pre-1.18.1)
-		return _G.InspectFrameTab4 or _G.InspectFrameTab3
-	end
+
 
 	local TURTLE_INSPECT_PREFIX = "TW_CHAT_MSG_WHISPER"
 	local TURTLE_INSPECT_DONE = "INSTalentEND;"
+	local TURTLE_INSPECT_TALENT_INFO = "INSTalentInfo;"
+
+	-- Talented's own spec store, populated from incoming INSTalentInfo whisper
+	-- packets. Used when InspectTalentsComFrame no longer exists as a Lua
+	-- global (Turtle WoW 1.18.1+).
+	local turtleInspectSpec = {class = ""}
+	for _i = 1, 3 do turtleInspectSpec[_i] = {} end
+	Talented._turtleInspectSpec = turtleInspectSpec  -- exposed for Debug.lua
 	local TURTLE_TALENT_REQUEST = "TalentInfoRequest_"
 	local TURTLE_TALENT_ANSWER = ":TalentInfoAnswer_"
 	local INSPECT_REQUEST_THROTTLE = 0.75
@@ -125,10 +116,21 @@ do
 		if type(com) == "table" and type(com.SPEC) == "table" then
 			return com.SPEC
 		end
+		-- 1.18.1: InspectTalentsComFrame no longer exists as a Lua global.
+		-- Fall back to Talented's own store populated from INSTalentInfo packets.
+		return turtleInspectSpec
 	end
 
 	local function HasTurtleInspectAPI()
-		return _G.InspectTalentsComFrame ~= nil or _G.InspectFrameTalentsTab_OnClick ~= nil
+		-- Returns true when the Turtle WoW turtleSpec path should be used for inspect.
+		-- InspectTalentsComFrame / InspectFrameTalentsTab_OnClick: old pre-1.18.1 protocol.
+		-- TWTalentFrame: present in 1.18.1+ where INSTalentInfo packets still arrive via
+		-- CHAT_MSG_ADDON after Tab4 click, populating turtleInspectSpec.
+		-- NOTE: GetTalentInfo(tab, index, true) returns the PLAYER'S OWN talents in Turtle
+		-- WoW, not the inspected target's — the turtleSpec path must be used for inspect.
+		return _G.InspectTalentsComFrame ~= nil
+			or _G.InspectFrameTalentsTab_OnClick ~= nil
+			or _G.TWTalentFrame ~= nil
 	end
 
 	local function GetTurtleInspectRank(class, tab, index)
@@ -155,9 +157,10 @@ do
 
 	local function GetInspectTalentRank(class, tab, index, talentGroup, preferTurtle)
 		local rank
-		-- When the Turtle WoW whisper-protocol inspect API is present, GetTalentInfo(true)
-		-- returns the player's OWN talents (not the inspect target's) in 1.18.1, so skip
-		-- that path entirely and rely solely on inspectCom.SPEC populated by the whisper.
+		-- In Turtle WoW 1.18.1, GetTalentInfo(tab, index, true, ...) returns the
+		-- player's OWN talents rather than the inspected target's. When the Turtle
+		-- whisper-protocol inspect API is present we must rely solely on
+		-- inspectCom.SPEC and never fall back to GetTalentInfo(true, ...).
 		local hasTurtleAPI = HasTurtleInspectAPI()
 		if not preferTurtle and not hasTurtleAPI then
 			local _, _, _, _, inspectRank = _G.GetTalentInfo(tab, index, true, nil, talentGroup)
@@ -200,14 +203,59 @@ do
 		end
 	end
 
+	local _switchToTab1Frame = CreateFrame("Frame")
+	_switchToTab1Frame:Hide()
+	_switchToTab1Frame:SetScript("OnUpdate", function()
+		_switchToTab1Frame:Hide()
+		local tab1 = _G.InspectFrameTab1
+		if tab1 then
+			-- Use :Click() rather than GetScript("OnClick") because tab OnClick
+			-- handlers are defined in XML and not accessible via GetScript in vanilla.
+			pcall(function() tab1:Click() end)
+		end
+	end)
+
+	local function SwitchToTab1()
+		-- Defer by one frame so the C-side talent request initiated by Tab4:Click()
+		-- has already been dispatched before we switch the panel away.
+		_switchToTab1Frame:Show()
+	end
+
+	local function TriggerInspectTab4Preload()
+		-- 1.18.1: talent data is loaded by Tab4's native C-side handler.
+		-- Only trigger when TWTalentFrame exists (1.18.1) but the old Lua whisper
+		-- protocol is absent (HasTurtleInspectAPI() = false).
+		if _G.InspectTalentsComFrame ~= nil or _G.InspectFrameTalentsTab_OnClick ~= nil then
+			return  -- old protocol present: RequestInspectData whisper handles it
+		end
+		if not (_G.TWTalentFrame and _G.InspectFrameTab4) then
+			return
+		end
+		if not (_G.InspectFrame and _G.InspectFrame:IsShown()) then
+			return
+		end
+		_G.InspectFrameTab4:SetScript("OnClick", prev_script)
+		pcall(function() _G.InspectFrameTab4:Click() end)
+		_G.InspectFrameTab4:SetScript("OnClick", new_script)
+		-- Switch back to Tab1 on the very next frame. The C-side request is already
+		-- dispatched by Click(); deferred by one frame so the panel fully registers.
+		SwitchToTab1()
+	end
+
 	local inspect_show_proxy = function(unit, a1, a2, a3, a4, a5, a6, a7, a8)
 		local r1, r2, r3, r4
 		if prev_inspect_show and prev_inspect_show ~= inspect_show_proxy then
 			r1, r2, r3, r4 = prev_inspect_show(unit, a1, a2, a3, a4, a5, a6, a7, a8)
 		end
 		Talented:RequestInspectData(unit or Talented:GetInspectUnit(), "inspect-show")
+		TriggerInspectTab4Preload()
 		Talented:UpdateInspectTemplate()
 		return r1, r2, r3, r4
+	end
+
+	-- Expose as a method so InspectButtons.lua can call it as a fallback.
+	function Talented:TriggerInspectTab4Preload()
+		TriggerInspectTab4Preload()
 	end
 
 	function Talented:HandleTurtleTalentTooltipRequest(prefix, message, channel, sender)
@@ -266,7 +314,6 @@ do
 			end
 			self._inspectLastRequestName = name
 			self._inspectLastRequestAt = now
-			self._turtleSpecValid = false
 			self._inspectOpenPending = nil
 			if reason == "inspect-tab" then
 				self._suppressInspectTalentsUI = nil
@@ -286,11 +333,37 @@ do
 			self._suppressInspectAPISecureHook = nil
 		end
 		local requested = false
+		-- Always reset turtleInspectSpec for the new inspect target so stale data
+		-- from a previous inspect cannot bleed through, and so that the class guard
+		-- in GetTurtleInspectRank passes correctly. Must run outside the
+		-- HasTurtleInspectAPI() guard, which may vary by client configuration.
+		do
+			local _, cls = UnitClass(unit)
+			if type(cls) == "string" then
+				turtleInspectSpec.class = cls
+				for i = 1, 3 do turtleInspectSpec[i] = {} end
+			end
+		end
 		if type(_G.SendAddonMessage) == "function" and HasTurtleInspectAPI() then
 			local _, class = UnitClass(unit)
 			local com = _G.inspectCom or _G.InspectTalentsComFrame
 			if type(com) == "table" and type(com.SPEC) == "table" and type(class) == "string" then
 				com.SPEC.class = class
+				-- Wipe per-talent rank entries left over from the previous inspect.
+				-- Ins_Init() only resets tree-level metadata; spec[tab][index] tables
+				-- persist and would cause UpdateInspectTemplate to read stale ranks
+				-- (which appear to be the viewer's own talents) before the whisper
+				-- response arrives. After this clear, GetTurtleInspectRank returns nil
+				-- for every slot, so hasInspectData stays false until INSTalentEND.
+				for i = 1, 3 do
+					if type(com.SPEC[i]) == "table" then
+						local j = 1
+						while com.SPEC[i][j] ~= nil do
+							com.SPEC[i][j] = nil
+							j = j + 1
+						end
+					end
+				end
 			end
 			if unit == "target" and type(_G.Ins_Init) == "function" then
 				pcall(_G.Ins_Init)
@@ -298,6 +371,7 @@ do
 			local prefix = "TW_CHAT_MSG_WHISPER<" .. tostring(name) .. ">"
 			pcall(_G.SendAddonMessage, prefix, "INSShowTalents", "GUILD")
 			requested = true
+			self:DebugInspect("RequestInspectData: whisper sent  target=" .. tostring(name) .. "  reason=" .. tostring(reason))
 		end
 		return requested
 	end
@@ -332,11 +406,9 @@ do
 	end
 
 	function Talented:HookInspectUI()
-		local talentsTab = Talented.GetInspectTalentsTab()
-		if talentsTab and not prev_script then
-			prev_script = talentsTab:GetScript("OnClick")
-			prev_script_tab = talentsTab
-			talentsTab:SetScript("OnClick", new_script)
+		if _G.InspectFrameTab4 and not prev_script then
+			prev_script = _G.InspectFrameTab4:GetScript("OnClick")
+			_G.InspectFrameTab4:SetScript("OnClick", new_script)
 		end
 		if type(_G.InspectFrame_Show) == "function" and _G.InspectFrame_Show ~= inspect_show_proxy then
 			prev_inspect_show = _G.InspectFrame_Show
@@ -350,10 +422,8 @@ do
 	end
 
 	function Talented:UnhookInspectUI()
-		local talentsTab = prev_script_tab or Talented.GetInspectTalentsTab()
-		if not talentsTab then
+		if not _G.InspectFrameTab4 then
 			prev_script = nil
-			prev_script_tab = nil
 			if _G.InspectFrame_Show == inspect_show_proxy and prev_inspect_show then
 				_G.InspectFrame_Show = prev_inspect_show
 			end
@@ -367,9 +437,8 @@ do
 			return
 		end
 		if prev_script then
-			talentsTab:SetScript("OnClick", prev_script)
+			_G.InspectFrameTab4:SetScript("OnClick", prev_script)
 			prev_script = nil
-			prev_script_tab = nil
 		end
 		if _G.InspectFrame_Show == inspect_show_proxy and prev_inspect_show then
 			_G.InspectFrame_Show = prev_inspect_show
@@ -388,13 +457,13 @@ do
 		if self.db.profile.hook_inspect_ui then
 			self:RegisterEvent("INSPECT_TALENT_READY")
 			self:RegisterEvent("PLAYER_TARGET_CHANGED")
-			if Talented.GetInspectTalentsTab() or IsAddOnLoaded("Blizzard_InspectUI") then
+			if _G.InspectFrameTab4 or IsAddOnLoaded("Blizzard_InspectUI") then
 				self:HookInspectUI()
 			end
 		else
 			self:UnregisterEvent("INSPECT_TALENT_READY")
 			self:UnregisterEvent("PLAYER_TARGET_CHANGED")
-			if Talented.GetInspectTalentsTab() or IsAddOnLoaded("Blizzard_InspectUI") then
+			if _G.InspectFrameTab4 or IsAddOnLoaded("Blizzard_InspectUI") then
 				self:UnhookInspectUI()
 			end
 		end
@@ -432,7 +501,13 @@ do
 	end
 
 	function Talented:INSPECT_TALENT_READY()
-		self:UpdateInspectTemplate()
+		local template = self:UpdateInspectTemplate()
+		-- In 1.18.1, INSPECT_TALENT_READY fires after Tab4 preload loads talent data.
+		-- Auto-open Talented if the user already clicked the button.
+		if template and self._inspectOpenPending and type(self.OpenTemplate) == "function" then
+			self._inspectOpenPending = nil
+			self:OpenTemplate(template)
+		end
 		if type(self.UpdateInspectButtons) == "function" then
 			self:UpdateInspectButtons()
 		end
@@ -472,13 +547,30 @@ do
 		if not string.find(prefix, TURTLE_INSPECT_PREFIX, 1, true) then
 			return
 		end
+		-- Parse INSTalentInfo packets into Talented's own spec store.
+		-- In Turtle WoW 1.18.1, InspectTalentsComFrame no longer exists as a
+		-- Lua global, so nobody else processes these packets.
+		if string.find(message, TURTLE_INSPECT_TALENT_INFO, 1, true) then
+			local parts = {}
+			for part in string.gfind(message, "[^;]+") do
+				parts[table.getn(parts) + 1] = part
+			end
+			local treeIdx  = tonumber(parts[2])
+			local talentIdx = tonumber(parts[3])
+			local currRank  = tonumber(parts[7])
+			if treeIdx and talentIdx and currRank then
+				if not turtleInspectSpec[treeIdx] then
+					turtleInspectSpec[treeIdx] = {}
+				end
+				turtleInspectSpec[treeIdx][talentIdx] = {rank = currRank}
+			end
+			return
+		end
 		if not string.find(message, TURTLE_INSPECT_DONE, 1, true) then
 			return
 		end
-		self._turtleSpecValid = true
+		self:DebugInspect("CHAT_MSG_ADDON: INSTalentEND received  sender=" .. tostring(sender))
 		local template = self:UpdateInspectTemplate()
-		-- If the user clicked the Talented button before whisper data arrived,
-		-- auto-open now that the response is complete.
 		if template and self._inspectOpenPending and type(self.OpenTemplate) == "function" then
 			self._inspectOpenPending = nil
 			self:OpenTemplate(template)
@@ -507,14 +599,11 @@ do
 		end
 		self:QueueClassSpellResolution(class, 80000)
 		local turtleSpec = GetTurtleInspectSpec()
-		-- Only trust turtle spec data when it was explicitly validated by a completed
-		-- whisper-protocol response (TURTLE_INSPECT_DONE). In Turtle WoW 1.18.1 the
-		-- compiled Blizzard_InspectUI can populate SPEC with the player's own talent
-		-- data as a side-effect, so we must not treat that as inspect target data.
-		local useTurtleInspect = HasTurtleInspectAPI() and (self._turtleSpecValid == true)
+		local useTurtleInspect = HasTurtleInspectAPI()
 		if useTurtleInspect and type(turtleSpec) == "table" and type(turtleSpec.class) == "string" and turtleSpec.class ~= class then
 			useTurtleInspect = false
 		end
+		self:DebugInspect("UpdateInspectTemplate: reading SPEC  unit=" .. tostring(unit) .. "  class=" .. tostring(class) .. "  useTurtleInspect=" .. tostring(useTurtleInspect))
 		local retval
 		for talentGroup = 1, CompatGetNumTalentGroups(true) do
 			local hasInspectData
