@@ -11,14 +11,7 @@ Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 
 ### v3.1-r20260323-1
 - Fixed player inspect being completely non-functional in Turtle WoW 1.18.1 — talents now load and display correctly when inspecting other players.
-  - In 1.18.1 `InspectTalentsComFrame` no longer exists as a Lua global; its `INSTalentInfo`/`INSTalentEND` whisper packets still arrive via `CHAT_MSG_ADDON` but are never stored by any Lua frame. Added `turtleInspectSpec`, an internal spec store that Talented populates directly from those packets.
-  - Added `TriggerInspectTab4Preload()`: when `InspectFrame` opens, Talented momentarily clicks `InspectFrameTab4` with its original un-hooked `OnClick` script to trigger the C-side talent data request, then restores `InspectFrameTab1` on the very next frame — so the talents tab is never visibly shown to the user.
-  - `INSPECT_TALENT_READY` now auto-opens the Talented view if the button was clicked before data had arrived (`_inspectOpenPending`).
-  - Clicking the Talented button before inspect data is ready now also triggers `TriggerInspectTab4Preload()` as a fallback, so data loads and the view opens automatically.
-  - `RequestInspectData` now resets `turtleInspectSpec` unconditionally on every new inspect so stale per-talent rank entries from a previous target never bleed through; also wipes `com.SPEC` per-slot entries for the old pre-1.18.1 path.
-  - Removed the now-obsolete `_turtleSpecValid` guard that required a completed `INSTalentEND` before reading any spec data — the store is now reset on request start and filled incrementally as `INSTalentInfo` packets arrive.
-  - Simplified inspect hook wiring: `HookInspectUI`, `UnhookInspectUI`, and `CheckHookInspectUI` now reference `InspectFrameTab4` directly instead of scanning by tab text.
-  - `SwitchToTab1` now uses `InspectFrameTab1:Click()` to fire the XML-defined handler (vanilla `GetScript("OnClick")` returns nil for XML-defined tab handlers).
+- Added `TriggerInspectTab4Preload()` Workaround: when `InspectFrame` opens, click `InspectFrameTab4` to trigger a talent data request, then return to `InspectFrameTab1` on next frame.  
 - Added **Debug Inspect** option in settings: prints the full inspect pipeline state (`inspectCom.SPEC` / `turtleInspectSpec` contents and `useTurtleInspect` flag) to chat at each stage, for troubleshooting inspect issues.
 
 <details>
