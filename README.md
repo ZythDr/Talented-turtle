@@ -3,6 +3,7 @@
 Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 
 **Fully supports Turtle WoW patch 1.18.1**
+- Known Issue: Only works with default `InspectFrame` as the hacky workaround fix for patch 1.18.1 is to click `InspectFrameTab4` to trigger a talent data fetch. This means that addons such as SuperInspect are no longer compatible for the time being.
 
 <img width="1154" height="713" alt="image" src="https://github.com/user-attachments/assets/a3e2964b-4ee2-4b95-a171-76a4785db829" />
 
