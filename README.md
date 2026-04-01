@@ -1,9 +1,18 @@
+# Talented-turtle will no longer be maintained by me. The addon is in need of a new (real) developer/maintainer  
+### I'm not a real developer and rely on vibe-coding, fixing the addon since patch 1.18.1 is beyond my capabilities, so the addon will not receive further updates from me. 
+Changes made in relation to how inspect talent data is received when inspecting a player changed in patch 1.18.1 and I've not been able to make it work reliably ever since.
+
+If you're an addon developer reading this and you find this addon interesting or useful and wish to maintain it, please do!  
+
+---
+
 # Talented-turtle
 
 Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 
-**Fully supports Turtle WoW patch 1.18.1**
-- Known Issue: Only works with default `InspectFrame` as the hacky workaround fix for patch 1.18.1 is to click `InspectFrameTab4` to trigger a talent data fetch. This means that addons such as SuperInspect are no longer compatible for the time being.
+~~**Fully supports Turtle WoW patch 1.18.1**~~  Partially works in patch 1.18.1, but inspection of other players' talents remain somewhat broken.
+
+**Known Issue:** Only works with default `InspectFrame` as the hacky workaround fix for patch 1.18.1 is to click `InspectFrameTab4` to trigger a talent data fetch. This means that addons such as SuperInspect are no longer compatible for the time being.  
 
 <img width="1154" height="713" alt="image" src="https://github.com/user-attachments/assets/a3e2964b-4ee2-4b95-a171-76a4785db829" />
 
