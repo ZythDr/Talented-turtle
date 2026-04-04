@@ -64,8 +64,8 @@ function Talented:OpenInspectedTemplateFromButton()
 	end
 	if not template then
 		self._inspectOpenPending = true
-		-- Fallback: if inspect_show_proxy didn't fire (e.g. opened via right-click
-		-- before InspectFrame was available), trigger the Tab4 pre-load now.
+		-- Fallback: if inspect_show_proxy didn't fire yet, trigger Talented's
+		-- explicit inspect preload request now.
 		-- INSTalentEND will auto-open the template via _inspectOpenPending.
 		if type(Talented.TriggerInspectTab4Preload) == "function" then
 			Talented:TriggerInspectTab4Preload()

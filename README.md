@@ -10,14 +10,20 @@ If you're an addon developer reading this and you find this addon interesting or
 
 Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
 
-~~**Fully supports Turtle WoW patch 1.18.1**~~  Partially works in patch 1.18.1, but inspection of other players' talents remain somewhat broken.
+**Fully supports Turtle WoW patch 1.18.1**, including inspection of other players' talents.
 
-**Known Issue:** Only works with default `InspectFrame` as the hacky workaround fix for patch 1.18.1 is to click `InspectFrameTab4` to trigger a talent data fetch. This means that addons such as SuperInspect are no longer compatible for the time being.  
+Inspect talent fetching has been restored without relying on clicking the Inspect talents tab, and compatibility with `SuperInspect` / `SuperInspect_UI` is working again.
 
 <img width="1154" height="713" alt="image" src="https://github.com/user-attachments/assets/a3e2964b-4ee2-4b95-a171-76a4785db829" />
 
 
 ## Changelog
+
+### v3.1.1-r20260404-1
+- Restored the pre-tab-click inspect flow for Turtle WoW 1.18.1 by preloading inspect support and sending the live inspect request directly.
+- Updated Talented's inspect transport to use Turtle WoW 1.18.1's `INSTalentShow` request path instead of the stale pre-patch `INSShowTalents` path.
+- Talented now maintains its own inspect talent cache from `CHAT_MSG_ADDON`, instead of depending on Blizzard's private inspect cache.
+- Restored compatibility with `SuperInspect` and `SuperInspect_UI`.
 
 ### v3.1-r20260323-1
 - Fixed player inspect being completely non-functional in Turtle WoW 1.18.1 — talents now load and display correctly when inspecting other players.
