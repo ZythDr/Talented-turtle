@@ -17,13 +17,15 @@ Inspect talent fetching has been restored without relying on clicking the Inspec
 - Talented now maintains its own inspect talent cache from `CHAT_MSG_ADDON`, instead of depending on Blizzard's private inspect cache.
 - Restored compatibility with `SuperInspect` and `SuperInspect_UI`.
 
+
+
+<details>
+<summary>Previous Changes / Full Changelog</summary>
+
 ### v3.1-r20260323-1
 - Fixed player inspect being completely non-functional in Turtle WoW 1.18.1 — talents now load and display correctly when inspecting other players.
 - Added `TriggerInspectTab4Preload()` Workaround: when `InspectFrame` opens, click `InspectFrameTab4` to trigger a talent data request, then return to `InspectFrameTab1` on next frame.  
 - Added **Debug Inspect** option in settings: prints the full inspect pipeline state (`inspectCom.SPEC` / `turtleInspectSpec` contents and `useTurtleInspect` flag) to chat at each stage, for troubleshooting inspect issues.
-
-<details>
-<summary>Previous Changes / Full Changelog</summary>
 
 ### v3.1-r20260322-1
 - Fixed player inspect being completely broken after Turtle WoW patch 1.18.1.
