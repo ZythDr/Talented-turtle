@@ -132,12 +132,13 @@ function Talented:ApplyTreeBackgroundDim(frame)
 		return
 	end
 	local dim = self:GetTreeBackgroundDimAlpha()
+	local shade = 1 - dim
 	local function ApplyShade(tex)
 		if not tex then
 			return
 		end
 		if type(tex.SetVertexColor) == "function" then
-			tex:SetVertexColor(1, 1, 1, 1)
+			tex:SetVertexColor(shade, shade, shade, 1)
 		end
 		if type(tex.SetAlpha) == "function" then
 			tex:SetAlpha(1)
@@ -148,46 +149,15 @@ function Talented:ApplyTreeBackgroundDim(frame)
 	ApplyShade(frame.bottomleft)
 	ApplyShade(frame.bottomright)
 
-	-- Disable old per-tree overlay path.
+	-- Hide any legacy overlay path; direct tinting is stable and avoids draw-order
+	-- regressions when tree/frame levels change.
 	if frame._talentedDimOverlay and type(frame._talentedDimOverlay.Hide) == "function" then
 		frame._talentedDimOverlay:Hide()
 	end
-
-	-- One shared overlay across all visible trees for this view.
 	local view = frame.view
 	local root = view and view.frame
-	local overlay = root and root._talentedTreeDimOverlay
-	if root and not overlay and type(root.CreateTexture) == "function" then
-		overlay = root:CreateTexture(nil, "ARTWORK")
-		root._talentedTreeDimOverlay = overlay
-		overlay:SetTexture(0, 0, 0, 1)
-		overlay:SetDrawLayer("ARTWORK", 0)
-		if type(overlay.SetBlendMode) == "function" then
-			overlay:SetBlendMode("BLEND")
-		end
-	end
-	if overlay and view then
-		local left = tonumber(view._treeDimLeft) or 4
-		local top = tonumber(view._treeDimTop) or 24
-		local width = tonumber(view._treeDimWidth) or 0
-		local height = tonumber(view._treeDimHeight) or 0
-		if width > 0 and height > 0 and type(overlay.ClearAllPoints) == "function" and type(overlay.SetPoint) == "function" then
-			overlay:ClearAllPoints()
-			overlay:SetPoint("TOPLEFT", root, "TOPLEFT", left, -top)
-			overlay:SetPoint("BOTTOMRIGHT", root, "TOPLEFT", left + width, -(top + height))
-		end
-		if dim > 0 and width > 0 and height > 0 then
-			if type(overlay.SetAlpha) == "function" then
-				overlay:SetAlpha(dim)
-			end
-			if type(overlay.Show) == "function" then
-				overlay:Show()
-			end
-		else
-			if type(overlay.Hide) == "function" then
-				overlay:Hide()
-			end
-		end
+	if root and root._talentedTreeDimOverlay and type(root._talentedTreeDimOverlay.Hide) == "function" then
+		root._talentedTreeDimOverlay:Hide()
 	end
 end
 local GetUnspentTalentPoints = CompatGetUnspentTalentPoints

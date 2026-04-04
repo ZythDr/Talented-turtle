@@ -11,6 +11,10 @@ Inspect talent fetching has been restored without relying on clicking the Inspec
 
 ## Changelog
 
+### v3.1.2-r20260404-2
+- Restored the `Dim tree backgrounds` option by returning to the stable direct background tinting path.
+- Restored automatic cleanup of empty saved templates: templates with `0` spent points are now deleted when you switch away from them or close Talented.
+
 ### v3.1.1-r20260404-1
 - Restored the pre-tab-click inspect flow for Turtle WoW 1.18.1 by preloading inspect support and sending the live inspect request directly.
 - Updated Talented's inspect transport to use Turtle WoW 1.18.1's `INSTalentShow` request path instead of the stale pre-patch `INSShowTalents` path.

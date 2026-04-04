@@ -652,6 +652,9 @@ do
 				Talented:Print(L["Error! Talented window has been closed during template application. Please reapply later."])
 				Talented:EnableUI(true)
 			end
+			if type(Talented.DeleteTemplateIfEmpty) == "function" then
+				Talented:DeleteTemplateIfEmpty(Talented.template)
+			end
 			Talented:CloseMenu()
 			Talented:UpdateMicroButtons()
 			Talented:UnregisterEvent("MODIFIER_STATE_CHANGED")

@@ -1622,6 +1622,37 @@ do
 		self:SetTemplate()
 	end
 
+	function Talented:DeleteTemplateIfEmpty(template)
+		if type(template) ~= "table" or template.talentGroup or template.inspect_name then
+			return false
+		end
+		if type(self.GetPointCount) ~= "function" or self:GetPointCount(template) > 0 then
+			return false
+		end
+
+		local templates = self:GetTemplatesDB()
+		local removed
+		if type(template.name) == "string" and templates[template.name] == template then
+			templates[template.name] = nil
+			removed = true
+		else
+			for name, value in pairs(templates) do
+				if value == template then
+					templates[name] = nil
+					removed = true
+					break
+				end
+			end
+		end
+		if removed and self.db and self.db.profile and self.db.profile.last_template == template.name then
+			self.db.profile.last_template = nil
+		end
+		if removed and type(self.QueueTemplateMenuRefresh) == "function" then
+			self:QueueTemplateMenuRefresh()
+		end
+		return removed and true or false
+	end
+
 	function Talented:UpdateTemplateName(template, newname)
 		if type(template) ~= "table" or template.talentGroup or type(newname) ~= "string" then
 			return
@@ -1775,14 +1806,15 @@ do
 		end
 		self:PrimeTemplateSpellResolution(template)
 		local view = self:CreateBaseFrame().view
-			local old = view.template
-			if template ~= old then
-				if template.talentGroup then
-					view:SetTemplate(template, self:MakeTarget(template.talentGroup))
-				else
-					view:SetTemplate(template)
-				end
-				self.template = template
+		local old = view.template
+		if template ~= old then
+			self:DeleteTemplateIfEmpty(old)
+			if template.talentGroup then
+				view:SetTemplate(template, self:MakeTarget(template.talentGroup))
+			else
+				view:SetTemplate(template)
+			end
+			self.template = template
 		end
 		if not template.talentGroup then
 			self.db.profile.last_template = template.name
