@@ -1,11 +1,3 @@
-# Talented-turtle will no longer be maintained by me. The addon is in need of a new (real) developer/maintainer  
-### I'm not a real developer and rely on vibe-coding, fixing the addon since patch 1.18.1 is beyond my capabilities, so the addon will not receive further updates from me. 
-Changes made in relation to how inspect talent data is received when inspecting a player changed in patch 1.18.1 and I've not been able to make it work reliably ever since.
-
-If you're an addon developer reading this and you find this addon interesting or useful and wish to maintain it, please do!  
-
----
-
 # Talented-turtle
 
 Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
