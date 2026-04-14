@@ -366,9 +366,8 @@ do
 		return nil
 	end
 
-	-- CalculatorData.lua is the preferred generated source. Runtime override data
-	-- remains as a compatibility fallback for older generated files and partial
-	-- override states.
+	-- ClassData-generated tooltip data is the primary source. Runtime override
+	-- data remains as a compatibility fallback for partial override states.
 	local function GetGeneratedTalentData(class, tab, index)
 		return GetCalculatorTalentData(class, tab, index) or GetOverrideTalentData(class, tab, index)
 	end

@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-Fetches 1.18.1 talent data from talent-builder.dev and regenerates
-Modules/CalculatorData.lua without any manual data-collection steps.
+Fetches Turtle WoW talent data from talent-builder.dev and regenerates the
+addon's ClassData/*.lua files without any manual data-collection steps.
 
 How it works:
-  1. Fetches /collections/1.18.1 (and per-class pages) to discover tree IDs.
-  2. Fetches each /tree/{id} page and extracts the TalentForm from the
-     Next.js RSC flight data embedded in <script>self.__next_f.push([1,"..."])</script>.
-  3. Generates Modules/CalculatorData.lua in the same format as
-     generate_calculator_module.py.
+    1. Fetches each /collections/<slug>/<class> page to discover the three tree
+         IDs for that class in the correct order.
+    2. Fetches each /tree/{id} page and extracts the TalentForm from the
+         Next.js RSC flight data embedded in <script>self.__next_f.push([1,"..."])</script>.
+    3. Writes one ClassData/<CLASS>.lua file per class.
 
 Usage:
-  python3 tools/fetch_talent_data.py
+    python3 tools/fetch_talent_data.py
 """
 
 import re
@@ -35,7 +35,6 @@ BASE_URL = "https://www.talent-builder.dev"
 
 ROOT = Path(__file__).resolve().parents[1]
 CLASS_DATA_DIR = ROOT / "ClassData"
-BACKUP_LUA = ROOT / "tools" / "CalculatorData.lua"
 
 # classMask from talent-builder src/utils/index.ts (keys are numeric class IDs)
 CLASS_IDS_ORDERED = [1, 2, 4, 8, 16, 64, 128, 256, 1024]
@@ -210,48 +209,50 @@ def extract_tree_ids(html: str) -> list:
     return list(dict.fromkeys(ids))  # deduplicate, preserve order
 
 
-def discover_tree_ids(collection: str) -> list:
+def discover_tree_descriptors(collection: str) -> list:
     """
-    Try to collect all tree IDs for the collection.
-    Strategy:
-      1. Fetch the all-classes collection overview page.
-      2. If we don't get 27 IDs (9 classes × 3 trees), also fetch each
-         per-class page: /collections/{collection}/{classslug}.
+    Discover tree IDs from each per-class collection page.
+
+    The live /tree/{id} pages no longer expose a reliable tree index, so the
+    class page order is treated as the source of truth for assigning trees
+    0/1/2 within each class.
     """
     print(f"\n--- Discovering tree IDs for collection {collection!r} ---")
-    all_ids = []
+    descriptors = []
+    seen = set()
 
-    # Step 1: overview page
-    try:
-        html = fetch_html(f"{BASE_URL}/collections/{collection}")
-        ids = extract_tree_ids(html)
-        print(f"  Found {len(ids)} tree IDs on overview page")
-        all_ids.extend(ids)
-    except Exception as e:
-        print(f"  WARNING: overview page failed: {e}")
+    for class_id in CLASS_IDS_ORDERED:
+        slug = CLASS_SLUGS[class_id]
+        class_name = CLASS_NAMES[class_id]
+        url = f"{BASE_URL}/collections/{collection}/{slug}"
+        try:
+            html = fetch_html(url)
+        except Exception as e:
+            print(f"  WARNING: {class_name} page failed: {e}")
+            continue
 
-    # Deduplicate what we have so far
-    seen = set(all_ids)
-    unique_ids = list(dict.fromkeys(all_ids))
+        ids = []
+        for tree_id in extract_tree_ids(html):
+            if tree_id in seen:
+                continue
+            ids.append(tree_id)
+            seen.add(tree_id)
 
-    # Step 2: per-class pages if we didn't find all 27 trees
-    if len(unique_ids) < 27:
-        print(f"  Only {len(unique_ids)}/27 IDs found; fetching per-class pages...")
-        for class_id, slug in CLASS_SLUGS.items():
-            url = f"{BASE_URL}/collections/{collection}/{slug}"
-            try:
-                html = fetch_html(url)
-                ids = extract_tree_ids(html)
-                new_ids = [i for i in ids if i not in seen]
-                if new_ids:
-                    print(f"    {CLASS_NAMES[class_id]}: +{len(new_ids)} new IDs")
-                    unique_ids.extend(new_ids)
-                    seen.update(new_ids)
-            except Exception as e:
-                print(f"    WARNING: {CLASS_NAMES[class_id]} page failed: {e}")
+        print(f"  {class_name}: found {len(ids)} tree IDs")
+        if len(ids) != 3:
+            print(f"    WARNING: expected 3 tree IDs for {class_name}, got {len(ids)}")
 
-    print(f"  Total tree IDs discovered: {len(unique_ids)}")
-    return unique_ids
+        for index, tree_id in enumerate(ids[:3]):
+            descriptors.append(
+                {
+                    "tree_id": tree_id,
+                    "class_id": class_id,
+                    "index": index,
+                }
+            )
+
+    print(f"  Total tree IDs discovered: {len(descriptors)}")
+    return descriptors
 
 
 # ---------------------------------------------------------------------------
@@ -390,28 +391,35 @@ def compact_talents(talent_form: dict) -> list:
     return entries
 
 
-def build_payload(tree_ids: list) -> dict:
+def build_payload(tree_descriptors: list) -> dict:
     """
     Fetch every tree, organise by class → [tree0, tree1, tree2], return payload.
     """
-    print(f"\n--- Fetching talent data for {len(tree_ids)} trees ---")
+    print(f"\n--- Fetching talent data for {len(tree_descriptors)} trees ---")
 
     # class_id -> {index: compact_talents_list}
     class_trees: dict = {}
 
-    for tree_id in tree_ids:
+    for descriptor in tree_descriptors:
+        tree_id = descriptor["tree_id"]
         form = get_talent_form(tree_id)
         if form is None:
             continue
 
-        class_id = form.get("class")
-        idx = form.get("index", 0)
+        class_id = descriptor["class_id"]
+        idx = descriptor["index"]
         name = form.get("name", "?")
         n_talents = len(form.get("talents", {}))
         print(
             f"    -> {CLASS_NAMES.get(class_id, f'unknown({class_id})')} "
             f"tree {idx}: '{name}' ({n_talents} talent slots)"
         )
+
+        if form.get("class") not in (None, class_id):
+            print(
+                f"    WARNING: tree {tree_id} reported class {form.get('class')} "
+                f"but was discovered under {class_name if (class_name := CLASS_NAMES.get(class_id)) else class_id}"
+            )
 
         if class_id not in class_trees:
             class_trees[class_id] = {}
@@ -445,7 +453,7 @@ def build_payload(tree_ids: list) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Lua generation (identical to generate_calculator_module.py)
+# Lua generation
 # ---------------------------------------------------------------------------
 
 def lua_quote(text: str) -> str:
@@ -515,13 +523,13 @@ def main():
     print("=== Talented Turtle: fetch 1.18.1 talent data ===\n")
 
     # 1. Discover tree IDs
-    tree_ids = discover_tree_ids(COLLECTION)
-    if not tree_ids:
+    tree_descriptors = discover_tree_descriptors(COLLECTION)
+    if not tree_descriptors:
         print("ERROR: Could not discover any tree IDs. Check network connectivity.")
         sys.exit(1)
 
     # 2. Fetch every tree and build payload
-    payload = build_payload(tree_ids)
+    payload = build_payload(tree_descriptors)
 
     # 3. Write ClassData files
     print(f"\n--- Writing ClassData/*.lua ---")

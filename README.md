@@ -11,6 +11,10 @@ Inspect talent fetching has been restored without relying on clicking the Inspec
 
 ## Changelog
 
+### v3.1.3
+- Fixed the talent data scraper so it once again discovers and writes all three talent trees per class.
+- Removed legacy unused calculator-generator files from the repository.
+
 ### v3.1.2-r20260404-2
 - Restored the `Dim tree backgrounds` option by returning to the stable direct background tinting path.
 - Restored automatic cleanup of empty saved templates: templates with `0` spent points are now deleted when you switch away from them or close Talented.
@@ -48,7 +52,7 @@ Inspect talent fetching has been restored without relying on clicking the Inspec
   - Writes one `ClassData/<CLASS>.lua` per class, directly replacing the old hand-maintained files.
   - Run with `python3 tools/fetch_talent_data.py` (or pass a collection slug: `python3 tools/fetch_talent_data.py 1.18.2`).
 - ClassData files now include `icon` and `req` (prerequisite) fields sourced from the calculator, where previously these came from an in-game `/talented dumpdata` capture.
-- Removed `Modules/CalculatorData.lua` from the addon (moved to `tools/` as reference). The ClassData files are now the single authoritative data source.
+- Removed the old `CalculatorData.lua` generator workflow entirely. The `ClassData/*.lua` files are now the single authoritative data source.
 - Fixed tooltip descriptions being blank for new 1.18.1 talents whose spell IDs are not yet in the calculator database. Sequential placeholder IDs (e.g. `{1, 2}`) are now correctly detected and bypassed so `GetTalentDesc` falls through to the description text from ClassData.
 
   
