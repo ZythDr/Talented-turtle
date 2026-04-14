@@ -1,6 +1,6 @@
 # Talented-turtle
 
-Backport of Talented from 3.3.5 to 1.12.1, specifically adapted for Turtle WoW.
+Backport of Talented from [WotLK 3.3.5](https://github.com/bkader/Talented_WoTLK) to Vanilla 1.12.1, specifically adapted for Turtle WoW.
 
 **Fully supports Turtle WoW patch 1.18.1**, including inspection of other players' talents.
 
